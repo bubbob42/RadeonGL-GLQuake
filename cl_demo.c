@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 void CL_FinishTimeDemo (void);
+void R_WorldVaReport (void);
 void RGL_ProfStart (void);	/* RadeonGL: sys_amiga.c, QuakeProfile */
 void RGL_ProfStop (void);
 
@@ -546,6 +547,8 @@ void CL_FinishTimeDemo (void)
 	 * benchmark or census run needs nobody at the keyboard. "quit" only
 	 * quits at once from the console; anywhere else it opens the "really
 	 * quit?" menu and waits for a key (measured in FS-UAE, 2026-11-02). */
+	R_WorldVaReport ();	// -worldvacheck's result (gl_rsurf.c)
+
 	if (COM_CheckParm ("-timedemoquit"))
 	{
 		key_dest = key_console;

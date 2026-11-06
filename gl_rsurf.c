@@ -1996,6 +1996,210 @@ static int		worldbatchhash[256];		// 1 + the first batch in the slot, 0 empty
 static float		*worldbatchverts;		// VERTEXSIZE floats per vertex
 static unsigned short	*worldbatchindexes;
 
+/* 2026-11-06. The static world vertex array. The batches above copy every
+ * visible polygon into worldbatchverts every frame (CopyMem: about 2 ms of a
+ * demo1 frame on the 68060), and the library then hashes the copy to find most
+ * of it unchanged. The polygons never change after the level loads, so
+ * R_BuildWorldVertexArray copies the world model's batchable polygons once,
+ * sorted into chunks of one (texture, lightmap page) and at most
+ * WORLDBATCH_MAX_VERTS vertices. A visible surface queues its chunk; the flush
+ * draws each queued chunk straight from the array, locking the whole chunk (the
+ * same bytes every frame) and indexing only its visible polygons. Surfaces of
+ * other models (b_*.bsp) keep the copying batches.
+ *
+ * Only with RadeonGL's GL_RGL_static_arrays (below): the library then keys the
+ * chunks by address, and a chunk costs nothing after its first upload.
+ * Without it the library hashes every locked byte to find it unchanged, and
+ * the array loses. MEASURED on the A4000D (68060/50, RadeonGL 0.6, demo1,
+ * 320 x 240 / 1280 x 720, ABBA): the copying batches 24.6 / 23.5 fps, whole
+ * chunks hashed 21.5 / 20.7, visible spans hashed 22.8 / 22.0.
+ *
+ * -noworldva switches it off, -worldva forces it on without the extension
+ * (spans hashed; -worldvafull: whole chunks), -noworldvahint leaves the hint
+ * out, -worldvacheck compares every drawn polygon with its glpoly_t. */
+
+typedef struct
+{
+	float		*verts;		// its first vertex in worldva
+	int		numverts;
+	texture_t	*base;		// the unanimated texture of its surfaces
+	int		lmtex;		// their lightmap page
+	int		texnum;		// this frame's texture, animation resolved
+	msurface_t	*chain;		// this frame's visible surfaces, through texturechain
+	int		next;		// 1 + the next queued chunk, 0 ends
+} worldchunk_t;
+
+static float		*worldva;		// VERTEXSIZE floats per vertex, chunk by chunk
+static worldchunk_t	*worldchunks;
+static int		numworldchunks;
+static int		*worldvachunk;		// per surface of worldvamodel: 1 + its chunk, 0 none
+static int		*worldvafirst;		// its first vertex in that chunk
+static model_t		*worldvamodel;
+static int		worldchunkqueue;	// 1 + the first queued chunk, 0 none
+static int		worldvacheck;		// -worldvacheck
+static int		worldvafull;		// -worldvafull: lock whole chunks, not the visible span
+static int		worldvastatic;		// the library keys the chunks by address (below)
+
+/* RadeonGL 0.7's extension GL_RGL_static_arrays: between glHint(..., GL_NICEST)
+ * and glHint(..., GL_DONT_CARE) the library keys the arrays of the world format
+ * by their addresses instead of hashing their bytes; GL_FASTEST forgets those
+ * keys (the array is freed). With it, whole chunks cost nothing after their
+ * first upload. Other minigl.libraries never see the hint. -noworldvahint. */
+#ifndef GL_RGL_STATIC_ARRAYS_HINT
+#define GL_RGL_STATIC_ARRAYS_HINT	0x52474c01
+#endif
+extern const char *gl_extensions;	// gl_vidamiga.c
+static int		worldvachecked, worldvabad;
+
+static void R_FreeWorldVertexArray (void)
+{
+	if (worldvastatic)
+		glHint (GL_RGL_STATIC_ARRAYS_HINT, GL_FASTEST);	// its addresses may come back
+
+	worldvastatic = 0;
+	free (worldva);
+	free (worldchunks);
+	free (worldvachunk);
+	free (worldvafirst);
+	worldva = NULL;
+	worldchunks = NULL;
+	worldvachunk = NULL;
+	worldvafirst = NULL;
+	numworldchunks = 0;
+	worldvamodel = NULL;
+	worldchunkqueue = 0;
+}
+
+static qboolean R_WorldVaSurface (msurface_t *s)
+{
+	return !(s->flags & (SURF_DRAWSKY|SURF_DRAWTURB)) && s->polys &&
+		s->polys->numverts >= 3 && s->polys->numverts <= WORLDBATCH_MAX_VERTS;
+}
+
+static int R_WorldVaCompare (const void *a, const void *b)
+{
+	msurface_t	*s1, *s2;
+
+	s1 = worldvamodel->surfaces + *(const int *)a;
+	s2 = worldvamodel->surfaces + *(const int *)b;
+
+	if (s1->texinfo->texture != s2->texinfo->texture)
+		return (s1->texinfo->texture < s2->texinfo->texture) ? -1 : 1;
+
+	if (s1->lightmaptexturenum != s2->lightmaptexturenum)
+		return s1->lightmaptexturenum - s2->lightmaptexturenum;
+
+	return *(const int *)a - *(const int *)b;	// the BSP's order: neighbours stay together
+}
+
+/* -worldvacheck: what the flushes found, at the end of a timedemo and of a level */
+void R_WorldVaReport (void)
+{
+	if (worldvacheck)
+		Con_Printf ("world vertex array check: %d polygons, %d different\n", worldvachecked, worldvabad);
+}
+
+/*
+================
+R_BuildWorldVertexArray
+
+At level load, after GL_BuildLightmaps has built every polygon and assigned
+the lightmap pages. Without memory the copying batches draw everything.
+================
+*/
+static void R_BuildWorldVertexArray (model_t *m)
+{
+	int		*order;
+	int		i, k, n, total, nv;
+	worldchunk_t	*c;
+	msurface_t	*s;
+
+	R_WorldVaReport ();
+	R_FreeWorldVertexArray ();
+	worldvacheck = COM_CheckParm ("-worldvacheck");
+	worldvafull = COM_CheckParm ("-worldvafull");
+	worldvachecked = worldvabad = 0;
+
+	// only where the library keys the chunks by address: hashed instead, the
+	// array costs more than the copy saves (MEASURED below)
+	if (!m || COM_CheckParm ("-noworldva") ||
+		(!(gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays")) && !COM_CheckParm ("-worldva")))
+		return;
+
+	order = malloc (m->numsurfaces * sizeof(int));
+	worldvachunk = calloc (m->numsurfaces, sizeof(int));
+	worldvafirst = malloc (m->numsurfaces * sizeof(int));
+
+	if (!order || !worldvachunk || !worldvafirst)
+		goto fail;
+
+	n = total = 0;
+
+	for (i=0 ; i<m->numsurfaces ; i++)
+	{
+		if (R_WorldVaSurface (m->surfaces + i))
+		{
+			order[n++] = i;
+			total += m->surfaces[i].polys->numverts;
+		}
+	}
+
+	if (!n)
+		goto fail;
+
+	worldva = malloc (total * VERTEXSIZE * sizeof(float));
+	worldchunks = malloc (n * sizeof(worldchunk_t));
+
+	if (!worldva || !worldchunks)
+		goto fail;
+
+	worldvamodel = m;	// R_WorldVaCompare reads it
+	qsort (order, n, sizeof(int), R_WorldVaCompare);
+
+	c = NULL;
+	nv = 0;
+
+	for (k=0 ; k<n ; k++)
+	{
+		s = m->surfaces + order[k];
+
+		if (!c || c->base != s->texinfo->texture || c->lmtex != s->lightmaptexturenum ||
+			c->numverts + s->polys->numverts > WORLDBATCH_MAX_VERTS)
+		{
+			c = &worldchunks[numworldchunks++];
+			c->verts = worldva + nv * VERTEXSIZE;
+			c->numverts = 0;
+			c->base = s->texinfo->texture;
+			c->lmtex = s->lightmaptexturenum;
+			c->texnum = 0;
+			c->chain = NULL;
+			c->next = 0;
+		}
+
+		memcpy (c->verts + c->numverts * VERTEXSIZE, s->polys->verts[0],
+			s->polys->numverts * VERTEXSIZE * sizeof(float));
+		worldvachunk[order[k]] = numworldchunks;
+		worldvafirst[order[k]] = c->numverts;
+		c->numverts += s->polys->numverts;
+		nv += s->polys->numverts;
+	}
+
+	free (order);
+
+	worldvastatic = gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays") &&
+		!COM_CheckParm ("-noworldvahint");
+
+	if (worldvacheck)
+		Con_Printf ("world vertex array: %d surfaces, %d vertices, %d chunks%s\n", n, total, numworldchunks,
+			worldvastatic ? ", static arrays" : "");
+
+	return;
+
+fail:
+	free (order);
+	R_FreeWorldVertexArray ();
+}
+
 /*
 ================
 R_AllocWorldBatches
@@ -2057,6 +2261,25 @@ static void R_BatchSequentialPoly (msurface_t *s)
 	else
 		t = s->texinfo->texture;
 
+	if (worldvamodel && s >= worldvamodel->surfaces && s < worldvamodel->surfaces + worldvamodel->numsurfaces &&
+		(b = worldvachunk[s - worldvamodel->surfaces]) != 0)
+	{
+		worldchunk_t	*c = &worldchunks[b-1];
+
+		if (!c->chain)
+		{
+			c->texnum = t->gl_texturenum;	// every surface of the chunk has the same base texture
+			c->next = worldchunkqueue;
+			worldchunkqueue = b;
+		}
+
+		R_RenderDynamicLightmaps (s);
+
+		s->texturechain = c->chain;
+		c->chain = s;
+		return;
+	}
+
 	slot = (t->gl_texturenum * 31 + s->lightmaptexturenum) & 255;
 
 	for (b = worldbatchhash[slot] ; b ; b = worldbatches[b-1].next)
@@ -2092,36 +2315,128 @@ R_FlushWorldBatches
 Draws and empties the batches R_BatchSequentialPoly queued.
 ================
 */
+static void R_WorldBatchPointers (float *verts)
+{
+	glVertexPointer (3, GL_FLOAT, VERTEXSIZE * sizeof(float), verts);
+	glTexCoordPointer (2, GL_FLOAT, VERTEXSIZE * sizeof(float), verts + 3);
+	glClientActiveTextureARB (GL_TEXTURE1_ARB);
+	glTexCoordPointer (2, GL_FLOAT, VERTEXSIZE * sizeof(float), verts + 5);
+	glClientActiveTextureARB (GL_TEXTURE0_ARB);
+}
+
+// the state R_DrawSequentialPoly's fake multitexture branch sets per surface,
+// after selecting unit 0: its underwater branch leaves unit 1 active
+static void R_WorldBatchState (int texnum, int lmtex)
+{
+	glActiveTextureARB (GL_TEXTURE0_ARB);
+	GL_Bind (texnum);
+	glActiveTextureARB (GL_TEXTURE1_ARB);
+	glEnable (GL_TEXTURE_2D);
+	GL_Bind (lightmap_textures + lmtex);
+	R_UploadLightmap (lmtex);	// every surface on the page is rebuilt by now
+	glTexEnvi (GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+}
+
 static void R_FlushWorldBatches (void)
 {
-	int		b;
+	int		b, q;
+	worldchunk_t	*c;
 
-	if (!numworldbatches)
+	if (!numworldbatches && !worldchunkqueue)
 		return;
 
-	glVertexPointer (3, GL_FLOAT, VERTEXSIZE * sizeof(float), worldbatchverts);
-	glTexCoordPointer (2, GL_FLOAT, VERTEXSIZE * sizeof(float), worldbatchverts + 3);
 	glEnableClientState (GL_TEXTURE_COORD_ARRAY);
 	glClientActiveTextureARB (GL_TEXTURE1_ARB);
-	glTexCoordPointer (2, GL_FLOAT, VERTEXSIZE * sizeof(float), worldbatchverts + 5);
 	glEnableClientState (GL_TEXTURE_COORD_ARRAY);
 	glClientActiveTextureARB (GL_TEXTURE0_ARB);
 	glEnableClientState (GL_VERTEX_ARRAY);
+
+	if (worldvastatic && worldchunkqueue)
+		glHint (GL_RGL_STATIC_ARRAYS_HINT, GL_NICEST);
+
+	// the static chunks: the span of the chunk from its first to its last
+	// visible polygon locked (the BSP order keeps visible neighbours together:
+	// the library hashes little more than the visible vertices), those polygons
+	// indexed. -worldvafull locks the whole chunk: the same bytes every frame,
+	// but the library hashes all of them (MEASURED 2026-11-06: four times the
+	// bytes of the copying batches in demo1).
+	for (q = worldchunkqueue ; q ; q = c->next)
+	{
+		msurface_t	*s;
+		int		ni = 0;
+		int		lo, hi;
+
+		c = &worldchunks[q-1];
+		lo = 0;
+		hi = c->numverts;
+
+		if (!worldvafull && !worldvastatic)
+		{
+			lo = c->numverts;
+			hi = 0;
+
+			for (s = c->chain ; s ; s = s->texturechain)
+			{
+				int	first = worldvafirst[s - worldvamodel->surfaces];
+
+				if (first < lo)
+					lo = first;
+
+				if (first + s->polys->numverts > hi)
+					hi = first + s->polys->numverts;
+			}
+		}
+
+		for (s = c->chain ; s ; s = s->texturechain)
+		{
+			int	n = s->polys->numverts;
+			int	first = worldvafirst[s - worldvamodel->surfaces];
+			int	j;
+
+			if (worldvacheck)
+			{
+				worldvachecked++;
+
+				if (memcmp (c->verts + first * VERTEXSIZE, s->polys->verts[0], n * VERTEXSIZE * sizeof(float)))
+					worldvabad++;
+			}
+
+			first -= lo;
+
+			for (j=2 ; j<n ; j++)
+			{
+				worldbatchindexes[ni++] = first;
+				worldbatchindexes[ni++] = first + j - 1;
+				worldbatchindexes[ni++] = first + j;
+			}
+		}
+
+		c->chain = NULL;
+
+		R_WorldBatchState (c->texnum, c->lmtex);
+		R_WorldBatchPointers (c->verts + lo * VERTEXSIZE);
+		glLockArrays (0, hi - lo);
+		glDrawElements (GL_TRIANGLES, ni, GL_UNSIGNED_SHORT, worldbatchindexes);
+		glUnlockArrays ();
+
+		glDisable (GL_TEXTURE_2D);
+		glActiveTextureARB (GL_TEXTURE0_ARB);
+	}
+
+	if (worldvastatic && worldchunkqueue)
+		glHint (GL_RGL_STATIC_ARRAYS_HINT, GL_DONT_CARE);
+
+	worldchunkqueue = 0;
+
+	if (numworldbatches)
+		R_WorldBatchPointers (worldbatchverts);
 
 	for (b=0 ; b<numworldbatches ; b++)
 	{
 		msurface_t	*s;
 		int		nv = 0, ni = 0;
 
-		// the state R_DrawSequentialPoly's fake multitexture branch sets per surface,
-		// after selecting unit 0: its underwater branch leaves unit 1 active
-		glActiveTextureARB (GL_TEXTURE0_ARB);
-		GL_Bind (worldbatches[b].texnum);
-		glActiveTextureARB (GL_TEXTURE1_ARB);
-		glEnable (GL_TEXTURE_2D);
-		GL_Bind (lightmap_textures + worldbatches[b].lmtex);
-		R_UploadLightmap (worldbatches[b].lmtex);	// every surface on the page is rebuilt by now
-		glTexEnvi (GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		R_WorldBatchState (worldbatches[b].texnum, worldbatches[b].lmtex);
 
 		for (s = worldbatches[b].chain ; s ; s = s->texturechain)
 		{
@@ -3113,5 +3428,7 @@ void GL_BuildLightmaps (void) // only used at level change - cowcat 2019
 
 	if (gl_mtexable)
 		glActiveTextureARB(GL_TEXTURE0_ARB);
+
+	R_BuildWorldVertexArray (cl.worldmodel);
 }
 
