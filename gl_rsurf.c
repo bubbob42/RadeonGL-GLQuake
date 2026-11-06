@@ -2913,6 +2913,85 @@ static void R_SetupWorldBops (void)
 	}
 }
 
+/* the surfaces of a decision node the walk reached, dot = the eye's side of
+ * its plane (2026-11-06: out of R_RecursiveWorldNode, unchanged, for the
+ * walk below) */
+static void R_WorldNodeSurfaces (mnode_t *node, double dot)
+{
+	int		c, side = 0;
+	msurface_t	*surf;
+
+
+	c = node->numsurfaces;
+
+	if (c)
+	{
+		surf = cl.worldmodel->surfaces + node->firstsurface;
+
+		if (dot < 0 -BACKFACE_EPSILON)
+			side = SURF_PLANEBACK;
+
+		else if (dot > BACKFACE_EPSILON)
+			side = 0;	
+
+		for ( ; c ; c--, surf++)
+		{
+			if (surf->visframe != r_framecount)
+				continue;
+
+			// don't backface underwater surfaces, because they warp
+			//surgeon: if no warping, then backface annyway
+
+			if( !(surf->flags & (r_dowarp ? SURF_UNDERWATER : 0)) && ( (dot < 0) ^ !!(surf->flags & SURF_PLANEBACK)) )
+				continue;   // wrong side
+			
+			/*
+			if(wireframe)
+			{
+				R_DrawLinePolys(surf);
+				continue;
+			}
+			*/
+
+			if(gl_wireonly.value)
+			{
+				R_DrawLinePolys(surf);
+				continue;
+			}
+
+			// if sorting by texture, just store it out
+			if (gl_texsort.value)
+			{
+				if ( !mirror || surf->texinfo->texture != cl.worldmodel->textures[mirrortexturenum] )
+				{
+					surf->texturechain = surf->texinfo->texture->texturechain;
+					surf->texinfo->texture->texturechain = surf;
+				}
+			}
+
+			else if (surf->flags & SURF_DRAWSKY)
+			{
+				surf->texturechain = skychain;
+				skychain = surf;
+			}
+
+			else if (surf->flags & SURF_DRAWTURB)
+			{
+				surf->texturechain = waterchain;
+				waterchain = surf;
+			}
+
+			else
+				R_BatchSequentialPoly (surf);
+
+			if(gl_showpolys.value)
+				R_DrawLinePolys(surf);
+		}
+	}
+
+	(void) side;
+}
+
 void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 {
 	int		c, side, ci, cs;
@@ -2998,73 +3077,8 @@ loc0:
 	}
 
 	// draw stuff
-
-	c = node->numsurfaces;
-
-	if (c)
-	{
-		surf = cl.worldmodel->surfaces + node->firstsurface;
-
-		if (dot < 0 -BACKFACE_EPSILON)
-			side = SURF_PLANEBACK;
-
-		else if (dot > BACKFACE_EPSILON)
-			side = 0;	
-
-		for ( ; c ; c--, surf++)
-		{
-			if (surf->visframe != r_framecount)
-				continue;
-
-			// don't backface underwater surfaces, because they warp
-			//surgeon: if no warping, then backface annyway
-
-			if( !(surf->flags & (r_dowarp ? SURF_UNDERWATER : 0)) && ( (dot < 0) ^ !!(surf->flags & SURF_PLANEBACK)) )
-				continue;   // wrong side
-			
-			/*
-			if(wireframe)
-			{
-				R_DrawLinePolys(surf);
-				continue;
-			}
-			*/
-
-			if(gl_wireonly.value)
-			{
-				R_DrawLinePolys(surf);
-				continue;
-			}
-
-			// if sorting by texture, just store it out
-			if (gl_texsort.value)
-			{
-				if ( !mirror || surf->texinfo->texture != cl.worldmodel->textures[mirrortexturenum] )
-				{
-					surf->texturechain = surf->texinfo->texture->texturechain;
-					surf->texinfo->texture->texturechain = surf;
-				}
-			}
-
-			else if (surf->flags & SURF_DRAWSKY)
-			{
-				surf->texturechain = skychain;
-				skychain = surf;
-			}
-
-			else if (surf->flags & SURF_DRAWTURB)
-			{
-				surf->texturechain = waterchain;
-				waterchain = surf;
-			}
-
-			else
-				R_BatchSequentialPoly (surf);
-
-			if(gl_showpolys.value)
-				R_DrawLinePolys(surf);
-		}
-	}
+	if (node->numsurfaces)
+		R_WorldNodeSurfaces (node, dot);
 
 	// recurse down the back side
 
@@ -3079,6 +3093,163 @@ loc0:
 	goto loc0;
 
 	#endif
+}
+
+/*
+================
+R_WalkWorld
+
+2026-11-06. R_RecursiveWorldNode without recursion: every call saved and
+restored four FPU and nine integer registers (about an eighth of the walk on
+the 68060). The same order -- front side, the node's surfaces, back side --
+with an explicit stack: a node's "after" entry holds its plane distance for
+its surfaces and its back side. -recursivewalk uses the recursive one.
+================
+*/
+#define WALK_STACK	1024
+
+typedef struct
+{
+	mnode_t	*node;
+	int	clipflags;
+	int	after;		// 1: the front side is done, now surfaces and back side
+	double	dot;
+} walkentry_t;
+
+static walkentry_t	walkstack[WALK_STACK];
+
+static void R_WalkWorld (mnode_t *root, int rootflags)
+{
+	int		sp, c, side, ci, cs, clipflags;
+	mnode_t		*node, *front;
+	msurface_t	**mark;
+	mleaf_t		*pleaf;
+	walkentry_t	*e;
+	double		dot;
+
+	walkstack[0].node = root;
+	walkstack[0].clipflags = rootflags;
+	walkstack[0].after = 0;
+	sp = 1;
+
+	while (sp > 0)
+	{
+		e = &walkstack[--sp];
+		node = e->node;
+		clipflags = e->clipflags;
+
+		if (e->after)
+		{
+			dot = e->dot;
+
+			if (node->numsurfaces)
+				R_WorldNodeSurfaces (node, dot);
+
+			// the back side (the recursive walk's loop: checked on entry)
+			walkstack[sp].node = node->children[dot >= 0 ? 1 : 0];
+			walkstack[sp].clipflags = clipflags;
+			walkstack[sp].after = 0;
+			sp++;
+			continue;
+		}
+
+		if (node->contents == CONTENTS_SOLID)
+			continue;	// solid
+
+		if (node->visframe != r_visframecount)
+			continue;
+
+		for (ci = 0 ; clipflags && ci < 4 ; ci++)
+		{
+			if (!(clipflags & (1 << ci)))
+				continue;
+
+			if (!wbops_off)
+			{
+				const float	*mm = node->mins;	// mins[3] maxs[3]
+				const float	*nm = frustum[ci].normal;
+				const int	*o = wbops[ci];
+
+				cs = ((nm[0]*mm[o[0]] + nm[1]*mm[o[1]] + nm[2]*mm[o[2]]) >= frustum[ci].dist) |
+					(((nm[0]*mm[o[3]] + nm[1]*mm[o[4]] + nm[2]*mm[o[5]]) < frustum[ci].dist) << 1);
+			}
+			else
+				cs = BOX_ON_PLANE_SIDE (node->mins, node->maxs, &frustum[ci]);
+
+			if (cs == 2)
+				break;				// wholly outside this plane
+
+			if (cs == 1)
+				clipflags &= ~(1 << ci);	// wholly inside: the subtree skips it
+		}
+
+		if (clipflags && ci < 4)
+			continue;	// left the loop on a plane the node is wholly outside
+
+		// if a leaf node, draw stuff
+		if (node->contents < 0)
+		{
+			pleaf = (mleaf_t *)node;
+
+			mark = pleaf->firstmarksurface;
+			c = pleaf->nummarksurfaces;
+
+			if (c)
+			{
+				do
+				{
+					(*mark)->visframe = r_framecount;
+					mark++;
+
+				} while (--c);
+			}
+
+			// deal with model fragments in this leaf
+			if (pleaf->efrags)
+				R_StoreEfrags (&pleaf->efrags);
+
+			continue;
+		}
+
+		// node is just a decision point: front side first, then this one
+		dot = PlaneDiff(modelorg, node->plane);
+		side = (dot >= 0) ? 0 : 1;
+
+		if (sp + 2 > WALK_STACK)
+		{
+			R_RecursiveWorldNode (node, clipflags);	// cannot happen (a BSP that deep)
+			continue;
+		}
+
+		walkstack[sp].node = node;
+		walkstack[sp].clipflags = clipflags;
+		walkstack[sp].after = 1;
+		walkstack[sp].dot = dot;
+		sp++;
+
+		front = node->children[side];
+
+		if (front->contents != CONTENTS_SOLID && front->visframe == r_visframecount)
+		{
+			walkstack[sp].node = front;
+			walkstack[sp].clipflags = clipflags;
+			walkstack[sp].after = 0;
+			sp++;
+		}
+	}
+}
+
+static int	walkrecursive = -1;
+
+static void R_WorldWalk (mnode_t *root, int clipflags)
+{
+	if (walkrecursive < 0)
+		walkrecursive = COM_CheckParm ("-recursivewalk") ? 1 : 0;
+
+	if (walkrecursive)
+		R_RecursiveWorldNode (root, clipflags);
+	else
+		R_WalkWorld (root, clipflags);
 }
 
 extern qboolean r_skybox;
@@ -3131,7 +3302,7 @@ void R_DrawWorld (void)
 		R_ClearSkyBox ();
 
 	R_SetupWorldBops ();
-	R_RecursiveWorldNode (cl.worldmodel->nodes, 15);
+	R_WorldWalk (cl.worldmodel->nodes, 15);
 
 	R_FlushWorldBatches ();		// the walk's queued surfaces, still ahead of the sky and water
 
