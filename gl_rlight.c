@@ -793,6 +793,10 @@ LIGHT SAMPLING
 vec3_t	    lightspot;
 extern cvar_t r_shadows;
 
+/* the surface and texel the last trace hit (R_LightPoint's cache) */
+static msurface_t	*lp_surf;
+static int		lp_ofs;
+
 int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 {
 	int		r, s, t, ds, dt, i, side, maps;
@@ -918,11 +922,16 @@ loc0:
 
 		if (!surf->samples)
 		{
+			lp_surf = surf;		// R_LightPoint's cache: lit 0
+			lp_ofs = -1;
 			return 0;
 		}
 
 		ds >>= 4;
 		dt >>= 4;
+
+		lp_surf = surf;			// R_LightPoint's cache: this texel
+		lp_ofs = dt * ((surf->extents[0]>>4)+1) + ds;
 
 		lightmap = surf->samples;
 		r = 0;
@@ -963,23 +972,94 @@ loc0:
 
 }
 
+/*
+2026-11-06. R_LightPoint traced from each alias model's origin down through
+the BSP every frame, also for the models that never move (items, torches,
+idle monsters). The trace's result is a surface and a texel; only the light
+styles change from frame to frame. The cache keeps, per origin (exact
+bits), the surface and texel of the trace and sums the styles afresh: the
+same result as the trace. Emptied at every level load (GL_BuildLightmaps).
+*/
+#define LPCACHE_SIZE	256
+
+typedef struct
+{
+	vec3_t		org;
+	msurface_t	*surf;		// NULL: nothing hit
+	int		ofs;		// the texel in surf->samples, -1: no samples
+	vec3_t		spot;		// lightspot (r_shadows)
+	qboolean	valid;
+} lpcache_t;
+
+static lpcache_t	lpcache[LPCACHE_SIZE];
+
+void R_ClearLightPointCache (void)
+{
+	memset (lpcache, 0, sizeof(lpcache));
+}
+
+static int R_LightFromTexel (msurface_t *surf, int ofs)
+{
+	byte		*lightmap;
+	int		r, maps, size;
+	unsigned	scale;
+
+	if (!surf || ofs < 0)
+		return 0;
+
+	size = ((surf->extents[0]>>4)+1) * ((surf->extents[1]>>4)+1);
+	lightmap = surf->samples + ofs;
+	r = 0;
+
+	for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
+	{
+		scale = d_lightstylevalue[surf->styles[maps]];
+		r += *lightmap * scale;
+		lightmap += size;
+	}
+
+	return r >> 8;
+}
+
 int R_LightPoint (vec3_t p)
 {
-	vec3_t	end, temp;
-	int	r;
- 
+	vec3_t		end, temp;
+	int		r;
+	unsigned	u[3];
+	lpcache_t	*e;
+
 	if (r_fullbright.value || !cl.worldmodel->lightdata)
 		return 255;
 
+	memcpy (u, p, sizeof(u));
+	e = &lpcache[(u[0] ^ (u[1] * 31) ^ (u[2] * 1009) ^ (u[2] >> 13)) & (LPCACHE_SIZE - 1)];
+
+	if (e->valid && !memcmp (e->org, p, sizeof(vec3_t)))
+	{
+		if (r_shadows.value)
+			VectorCopy (e->spot, lightspot);
+
+		return R_LightFromTexel (e->surf, e->ofs);
+	}
+
+	lp_surf = NULL;
+	lp_ofs = -1;
+
 	//surgeon:
 	VectorCopy(p, temp);
-  
+
 	end[0] = temp[0];
 	end[1] = temp[1];
 	end[2] = temp[2] - 2048; // 8192 johnfitz - too much ? Cowcat 2019
-  
+
 	r = RecursiveLightPoint (cl.worldmodel->nodes, temp, end);
-  
+
+	VectorCopy (p, e->org);
+	e->surf = lp_surf;
+	e->ofs = lp_ofs;
+	VectorCopy (lightspot, e->spot);
+	e->valid = true;
+
 	if (r == -1)
 		r = 0;
 

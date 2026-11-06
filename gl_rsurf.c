@@ -2116,6 +2116,8 @@ static int R_WorldVaCompare (const void *a, const void *b)
 	return *(const int *)a - *(const int *)b;	// the BSP's order: neighbours stay together
 }
 
+void R_ClearLightPointCache (void);	// gl_rlight.c
+
 /* -worldvacheck: what the flushes found, at the end of a timedemo and of a level */
 void R_WorldVaReport (void)
 {
@@ -3454,5 +3456,6 @@ void GL_BuildLightmaps (void) // only used at level change - cowcat 2019
 		glActiveTextureARB(GL_TEXTURE0_ARB);
 
 	R_BuildWorldVertexArray (cl.worldmodel);
+	R_ClearLightPointCache ();	// gl_rlight.c (2026-11-06)
 }
 

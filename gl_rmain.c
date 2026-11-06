@@ -1656,6 +1656,9 @@ GL_DrawAliasArrayBlendedFrame compute, once per distinct vertex instead of once
 per strip vertex.
 =============
 */
+static ULONG	normcolor[256];		// GL_DrawAliasBatch: a normal's colour this draw
+static int	normstamp[256], normframe;
+
 static void GL_DrawAliasBatch (aliashdr_t *paliashdr, int pose1, int pose2, float blend, qboolean lerp)
 {
 	ULONG			a;
@@ -1738,6 +1741,8 @@ static void GL_DrawAliasBatch (aliashdr_t *paliashdr, int pose1, int pose2, floa
 	else
 		a = 0xFF000000;
 
+	normframe++;	// a new draw: every normal's colour is worked out again
+
 	for (c=0 ; c<paliashdr->numbatchchunks ; c++, chunk++)
 	{
 		short		*bv = bverts + chunk->firstvert;
@@ -1807,14 +1812,26 @@ static void GL_DrawAliasBatch (aliashdr_t *paliashdr, int pose1, int pose2, floa
 			else
 			#endif
 			{
+				/* 2026-11-06: each normal's colour (162 of them) worked
+				 * out the first time this draw meets it, then reused:
+				 * the same value as per vertex, one float multiply and
+				 * conversion a normal instead of a vertex */
 				for (i=0 ; i<chunk->numverts ; i++, lva++)
 				{
-					ULONG	lit = (ULONG)(shadedots[verts1[bv[i]].lightnormalindex] * shadelight);
+					int	n = verts1[bv[i]].lightnormalindex;
 
-					if(lit > 255)
-						lit = 255; //clamp
+					if (normstamp[n] != normframe)
+					{
+						ULONG	lit = (ULONG)(shadedots[n] * shadelight);
 
-					lva->c = a | (lit<<16) | (lit<<8) | lit;
+						if(lit > 255)
+							lit = 255; //clamp
+
+						normcolor[n] = a | (lit<<16) | (lit<<8) | lit;
+						normstamp[n] = normframe;
+					}
+
+					lva->c = normcolor[n];
 				}
 			}
 		}
