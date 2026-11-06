@@ -546,19 +546,37 @@ void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 		goto store;
 	}
 
-	// clear to no light
-	for (i=0 ; i<size ; i++)
-		blocklights[i] = 0;
-	
-	// add all the lightmaps
+	/* 2026-11-06: the first light style is stored, the others added: one
+	 * pass less over every rebuilt lightmap than clearing first. The same
+	 * values. */
+	maps = 0;
+
+	if (lightmap && surf->styles[0] != 255)
+	{
+		scale = d_lightstylevalue[surf->styles[0]];
+		surf->cached_light[0] = scale;	// 8.8 fraction
+
+		for (i=0 ; i<size ; i++)
+			blocklights[i] = lightmap[i] * scale;
+
+		lightmap += size;	// skip to next lightmap
+		maps = 1;
+	}
+	else
+	{
+		for (i=0 ; i<size ; i++)
+			blocklights[i] = 0;	// no light
+	}
+
+	// add the other lightmaps
 	if (lightmap)
 	{
-		for (maps = 0; maps < MAXLIGHTMAPS && surf->styles[maps] != 255; maps++)
+		for ( ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255; maps++)
 		{
 			scale = d_lightstylevalue[surf->styles[maps]];
 			surf->cached_light[maps] = scale;	// 8.8 fraction 
 
-			for (i=0 ; i<size ; i++)					
+			for (i=0 ; i<size ; i++)
 				blocklights[i] += lightmap[i] * scale;
 
 			lightmap += size;	// skip to next lightmap 
@@ -2212,6 +2230,7 @@ static void R_BuildWorldVertexArray (model_t *m)
 
 	free (order);
 
+
 	worldvastatic = gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays") &&
 		!COM_CheckParm ("-noworldvahint");
 
@@ -2395,6 +2414,7 @@ static void R_FlushWorldBatches (void)
 		c = &worldchunks[q-1];
 		lo = 0;
 		hi = c->numverts;
+
 
 		if (!worldvafull && !worldvastatic)
 		{
@@ -2745,6 +2765,35 @@ R_RecursiveWorldNode
  * subtree skips that plane, as Quake's software renderer does; the walk tested
  * all four planes at every node (BoxOnPlaneSide0..7: 2.2 ms of a demo1 frame
  * on the A4000D, research 2026-11-03). Start with 15. */
+/* 2026-11-06. The frustum test of the world walk inline: the frustum planes
+ * are never axial, so BOX_ON_PLANE_SIDE always called a BoxOnPlaneSide0..7
+ * through a pointer. Those differ only in the corner each picks by the
+ * plane's sign bits; R_SetupWorldBops works the corners out once a frame
+ * (as indexes into a node's mins[3] maxs[3], which follow each other), and
+ * the walk computes the same sums in the same order. -noinlinebops. */
+static int	wbops[4][6];	// per frustum plane: the far corner's 3, the near corner's 3
+static int	wbops_off = -1;
+
+static void R_SetupWorldBops (void)
+{
+	int	i, k, neg;
+
+	if (wbops_off < 0)
+		wbops_off = COM_CheckParm ("-noinlinebops") ? 1 : 0;
+
+	for (i=0 ; i<4 ; i++)
+	{
+		for (k=0 ; k<3 ; k++)
+		{
+			// from the normal itself, as BoxOnPlaneSideClassify chooses: with
+			// FASTBOPS R_SetFrustum never sets the planes' signbits
+			neg = frustum[i].normal[k] < 0;
+			wbops[i][k] = neg ? k : 3 + k;		// far: maxs, mins where the normal is negative
+			wbops[i][3 + k] = neg ? 3 + k : k;	// near: the other one
+		}
+	}
+}
+
 void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 {
 	int		c, side, ci, cs;
@@ -2765,7 +2814,17 @@ loc0:
 		if (!(clipflags & (1 << ci)))
 			continue;
 
-		cs = BOX_ON_PLANE_SIDE (node->mins, node->maxs, &frustum[ci]);
+		if (!wbops_off)
+		{
+			const float	*mm = node->mins;	// mins[3] maxs[3]
+			const float	*nm = frustum[ci].normal;
+			const int	*o = wbops[ci];
+
+			cs = ((nm[0]*mm[o[0]] + nm[1]*mm[o[1]] + nm[2]*mm[o[2]]) >= frustum[ci].dist) |
+				(((nm[0]*mm[o[3]] + nm[1]*mm[o[4]] + nm[2]*mm[o[5]]) < frustum[ci].dist) << 1);
+		}
+		else
+			cs = BOX_ON_PLANE_SIDE (node->mins, node->maxs, &frustum[ci]);
 
 		if (cs == 2)
 			return;				// wholly outside this plane
@@ -2952,6 +3011,7 @@ void R_DrawWorld (void)
 	if(r_skybox)
 		R_ClearSkyBox ();
 
+	R_SetupWorldBops ();
 	R_RecursiveWorldNode (cl.worldmodel->nodes, 15);
 
 	R_FlushWorldBatches ();		// the walk's queued surfaces, still ahead of the sky and water
@@ -2961,6 +3021,7 @@ void R_DrawWorld (void)
 	{
 		wireframe = true;
 		glDisable(GL_DEPTH_TEST);
+		R_SetupWorldBops ();
 		R_RecursiveWorldNode (cl.worldmodel->nodes, 15);
 		glEnable(GL_DEPTH_TEST);
 		wireframe = false;
