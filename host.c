@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // host.c -- coordinates spawning and killing of local servers
 
 #include "quakedef.h"
+#include "rglq_version.h"	// this edition's version (2026-11-06)
 #include "r_local.h"
 #include <stdlib.h>
 
@@ -1125,6 +1126,7 @@ void Host_Init (quakeparms_t *parms)
 	#endif
 	#endif
 
+	Con_Printf ("RadeonGL edition " RGLQ_VERSION " (" RGLQ_DATE ")\n");
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
 	Con_Printf ("%4.1f megabyte heap\n", parms->memsize / (1024*1024.0));
   

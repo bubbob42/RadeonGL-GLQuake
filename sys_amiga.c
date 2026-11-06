@@ -628,6 +628,19 @@ static int __attribute__((noinline)) QuakeOnBigStack (void)
 #define AFF_68060	(1L<<7)
 #endif
 
+/* the version for the Version command: this edition, and which CPU build */
+#include "rglq_version.h"
+
+#if defined(Q_CPU_060)
+#define RGLQ_CPU	"68060"
+#elif defined(Q_CPU_040)
+#define RGLQ_CPU	"68040/68060"
+#else
+#define RGLQ_CPU	"68020+"
+#endif
+
+const char rglq_verstag[] = "$VER: GLQuake " RGLQ_VERSION " (" RGLQ_DATE ") RadeonGL edition, for minigl.library 29.1, " RGLQ_CPU;
+
 static int Q_CpuOk (int argc, char *argv[])
 {
 	int	i;

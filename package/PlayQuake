@@ -1,0 +1,19 @@
+.KEY ARGS/F
+.BRA {
+.KET }
+; PlayQuake -- GLQuake (RadeonGL edition) for this processor: GLQuake on a
+; 68060, GLQuake040 on a 68040. Put both and this script beside the id1
+; drawer and double-click it, or start it from a Shell in that drawer;
+; anything after the name goes to GLQuake as well:
+;   Execute PlayQuake -width 640 -height 480
+; RadeonGLCheck 0: RadeonGL's command check off for this run (faster;
+; other minigl.libraries ignore it).
+FailAt 21
+Set RadeonGLCheck 0
+CPU CHECK 68060 >NIL:
+If WARN
+  GLQuake040 -nocdaudio {ARGS}
+Else
+  GLQuake -nocdaudio {ARGS}
+EndIf
+UnSet RadeonGLCheck

@@ -1,72 +1,163 @@
-# glquake/ -- the GLQuake test client
+# GLQuake for minigl.library -- RadeonGL edition 1.0
 
-GLQuake for AmigaOS 3.x 68k as a **minigl.library ABI-5 dispatch client**: every
-`gl*` and `mgl*` call goes through the library's dispatch table. One binary
-therefore runs on any minigl.library 29.1+ -- PiStorm3D, Warp3D Classic, and
-RadeonGL when it exists. It is the compatibility test for RadeonGL and the
-base for the fast-path fork (docs/concept-radeongl.md, section 8).
+GLQuake for AmigaOS 3.x on a 68040 or 68060, as a `minigl.library` 29.1
+client (dispatch interface ABI 5). It runs on any `minigl.library` 29.1:
+PiStorm3D, the Warp3D/MiniGL classic library, RadeonGL. Where the library
+is RadeonGL 0.7 or later, it uses that library's own extension and draws the
+world faster.
 
-## Where it comes from
+It is Dennis Boon's and Steffen Häuser's GLQuake from Aminet
+(`game/shoot/MiniGL_Library_Quake1`, 7 October 2026), built for the 68060
+and the 68040, with crash fixes, picture fixes and a faster renderer.
 
-- **Source:** Aminet `game/shoot/MiniGL_Library_Quake1.lha` (2026-10-07; Dennis Boon, Steffen Haeuser), the `src/` drawer.
-  - Imported unmodified in commit `d34acdb`; four empty build drawers and an empty `debug` file were left out.
-  - Upstream's README is kept as `README.upstream.txt`.
-- **Licence:** GPL, see `COPYING`. Quake is copyright id Software.
-- **Lineage:** id's GPL release -> Frank Wille / Christian Michael (BlitzQuake) -> Cowcat -> Boon/Haeuser.
-- **Game data is not here and is never committed** (`*.pak` is git-ignored).
+## What is new against the Aminet release
 
-## Build
+**Fixes**
+
+- **No more guru BF00 0002 or frozen water on a 68060.** The Paula sound
+  interrupt used the FPU. On a 68060 that collided with the 68060.library's
+  emulation of the FSIN/FCOS instructions (guru `BF00 0002`), and since it
+  never restored the FPU status, it could also make the main program take a
+  wrong turn and freeze in a water surface. The interrupt now works in
+  integers only.
+- **No more bright pixels at polygon seams.** `gl_keeptjunctions` is 1 by
+  default: the level loader keeps the edge points that close the gaps
+  between neighbouring polygons.
+- **Mouse look follows the mouse.** The input handler kept only the last
+  mouse event of a frame and lost the others, so turning speed depended on
+  the frame rate. It now adds up every movement. (Mouse look may feel faster
+  at your old `sensitivity`.)
+- **Options menu:** no empty row at the bottom, and "Lookstrafe" can be
+  reached again.
+- **Dynamic lights** no longer light walls through other walls (stale light
+  bits of earlier frames).
+- **Two crashes in the QuakeC value printer** (a field value without a
+  field; the savegame writer uses it) are gone.
+
+**Speed** (measured on a 68060/50, see the table below)
+
+- A build for the 68060 and one for the 68040, each with only instructions
+  its CPU has in hardware: no `FSINCOS` (emulated on both), and the 68040
+  build without `FINTRZ` (emulated there).
+- The world is drawn from one vertex array built at level load, in chunks
+  of one texture and lightmap page. With RadeonGL 0.7 the library keeps
+  these in video memory and draws whole chunks; the card culls what is
+  hidden. Other libraries get the classic batches.
+- 8-bit lightmaps by default (id's own default): finer light steps and half
+  the data to upload. `-lm_4444` gives the old 16-bit ones.
+- The world walk: frustum clip flags, an inline frustum test, no recursion.
+- Alias models: one colour per normal instead of per vertex; the light
+  under a model that does not move is not traced again every frame.
+- Dynamic lights in integer arithmetic, only inside the light's square.
+- 2D text: one draw per line instead of one per character.
+- Sound: the mixing loop through pointers, four samples a pass on the 68060.
+
+## Requirements
+
+- AmigaOS 3.1 or newer (tested on 3.2).
+- A 68060 (`GLQuake`) or a 68040 (`GLQuake040`, also runs on a 68060), with
+  FPU. Each build refuses a CPU it is not made for; `-anycpu` overrides.
+- A `minigl.library` 29.1 for your graphics hardware.
+  For RadeonGL's faster world drawing: RadeonGL 0.7 or later.
+- The Quake data: the `id1` drawer with `pak0.pak` (shareware) and, for the
+  full game, `pak1.pak`. They are not part of this package.
+
+## Installing and starting it
+
+Double-click `Install` in the package: the Installer asks for the drawer
+that holds Quake's data drawer `id1` and copies both builds, the start
+script `PlayQuake` and this ReadMe (as `GLQuakeR200.ReadMe`) there. A
+GLQuake already in that drawer that is not this edition (Aminet's, for
+example) is kept as `GLQuake.old`. Then double-click `PlayQuake`: it
+starts the build for your CPU, with RadeonGL's command check off.
+
+By hand: copy everything in the package's `Files` drawer beside `id1`.
+From a Shell, in that drawer: `GLQuake` (or `GLQuake040`) with Quake's
+usual options, for example `-width 640 -height 480`.
+
+GLQuake makes its own stack; no `Stack` command is needed. The
+`minigl.library` comes separately: RadeonGL (`driver/video/RadeonGL`) for
+R200 Radeons.
+
+## Options
+
+New or changed against the Aminet release:
+
+| Option | What |
+|---|---|
+| `-anycpu` | start a build on a CPU it is not made for |
+| `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |
+| `gl_keeptjunctions 0` | the old behaviour: fewer vertices, cracks at seams |
+| `-timedemoquit` | quit after `timedemo` (for benchmarks) |
+| `-noworldva` | no static world array: the classic batches |
+| `-noworldvahint`, `-noworldvawhole` | with RadeonGL: without its address keys / without whole chunks |
+| `-worldva`, `-worldvafull` | the static world array without RadeonGL's extension (slower; for tests) |
+| `-worldvacheck` | compares every drawn world polygon with its source (tests) |
+| `-nostringn`, `-noinlinebops`, `-recursivewalk` | the old ways of text, frustum test and world walk (comparisons) |
+
+## Speed
+
+GLQuake's `timedemo`, all frames, no sound, on an A4000D: 68060 at 50 MHz
+(CyberStorm MK II), Mediator, Radeon 9200, AmigaOS 3.2, Picasso96 3.6,
+RadeonGL with its command check off (`RadeonGLCheck=0`). Frames a second:
+
+| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | this edition 1.0, RadeonGL 0.7 | |
+|---|---|---:|---:|---:|
+| demo1 | 320 x 240 | 24.4 | **29.4** | +20% |
+| demo1 | 640 x 480 | 23.7 | **28.7** | +21% |
+| demo1 | 1280 x 720 | 23.3 | **28.0** | +20% |
+| demo2 | 320 x 240 | 21.7 | **25.1** | +16% |
+| demo2 | 1280 x 720 | 17.9 | **21.1** | +18% |
+| demo3 | 320 x 240 | 21.4 | **25.6** | +20% |
+| demo3 | 1280 x 720 | 19.9 | **24.0** | +21% |
+
+The left column is the Aminet source as RadeonGL measured it before this
+edition: already built for the 68060 and with the sound interrupt fixed.
+The Aminet binary itself is built for the 68020 and slower still on a
+68060: a tester's 68060/75 ran it at 27 fps in demo1 at 320 x 240, and
+this edition's 68060 build at 43.0.
+
+The 68060 sets the pace, not the Radeon: a frame at 1280 x 720 costs
+little more than one at 320 x 240.
+
+## Building
+
+The build lives in RadeonGL's tree (it brings the minigl.library 29.1 SDK
+and the AHI and CyberGraphX headers). With this repository beside it as
+`../RadeonGL-GLQuake`:
 
 ```sh
-gmake glquake          # -> dist/Quake/GLQuake  (objects in build/glquake/)
-gmake glquake-data     # copies PAK0/PAK1 from QUAKE_ID1 to dist/Quake/id1/ (54 MB)
-gmake clean-glquake
+gmake glquake                # dist/Quake/GLQuake     (68060)
+gmake glquake QCPU=040       # dist/Quake/GLQuake040  (68040)
+gmake glquake-data           # the id1 data for tests (never committed)
 ```
 
-`QUAKE_ID1` defaults to the registered data on the iprasa storage share,
-`/Volumes/storage/A4000T_OS314/Games/quake/ID1`. That pak0 has demo1-demo3 for
-`timedemo`. Override it on the command line for another copy.
+Toolchain: m68k-amigaos-gcc 6.5 with libnix (`-noixemul`), GAS for the
+`*_gas.s` files. The rules are in `Makefile.radeongl`.
+`tools/scan_emul.py` lists every instruction of a binary that a 68040 or
+68060 would have to emulate. `FINDINGS.md` holds the audit notes and
+`PLAN.md` the work plan.
 
-Toolchain: m68k-amigaos-gcc 6.5 (`~/amiga-arm`), libnix (`-noixemul`), GAS
-for the `*_gas.s` files. The import library and headers come from
-`sdk/minigl-29.1`. AHI and CyberGraphX headers come from `sdk/ahi` and
-`sdk/cgx`. The rules live in `Makefile.radeongl`; the top-level Makefile only
-delegates to it.
+## Made with AI
 
-## What RadeonGL changed, and why
+This edition was made with the help of AI. Claude, an AI model by
+Anthropic, wrote most of the changes, the tests and this documentation,
+working under the direction of Marcus Gerards, who made the design
+decisions. Every change was measured and tested on real hardware.
 
-The published source is upstream's **static** build: its own script
-(`build_glquake_wsl_showcase.sh`) links MiniGLV3D into the executable. The
-shipped `glquake` binary is a shared-library client, but the code that makes
-it one is not in the archive. In particular, the binary's "Opening
-minigl.library..." / "Unable to open minigl.library V%d or obtain a compatible
-dispatch table" messages appear nowhere in `src/`. Built as a client, the
-published source failed in three places. The changes:
+## Credits
 
-| Where | Change |
-|---|---|
-| `gl_vidamiga.c` | Under `MINIGL_SHARED_CLIENT`: `MiniGLOpen()` replaces `MGLInit()`, and `MiniGLClose()` replaces `MGLTerm()`. Same messages as the shipped binary. `VID_Shutdown` touches the dispatch table only when it exists: `Host_Shutdown` runs it after a failed `MiniGLOpen` too, and a call through the NULL table jumps into the CPU vector table (guru `810000FF`, measured in FS-UAE). |
-| `gl_rsurf.c` | Under `MINIGL_SHARED_CLIENT`: an empty `D()` replaces `#include "../MiniGLV3D/backend/hw/v3d_debug.h"`, a MiniGLV3D internal that is not in the client SDK. |
-| `minigl_client_compat.h` (new, forced in by `-include`) | `miniglext.c`, `gl_warp.c`, `gl_mirror.c` and `gl_wiredraw.c` call MiniGLV3D's internal `GLVertex3fv(ctx, v)`-style functions and pass its global `mini_CurrentContext`. These map one-to-one onto the public calls, which fetch the current context themselves. Declares `strlcpy`/`strlcat`. |
-| `minigl_client_compat.c` (new) | Inert stand-ins for two MiniGLV3D debug symbols (`g_mglv3d_last_render_wait_result`, `mglv3d_log`). `strlcpy`/`strlcat`: upstream had them from clib2, which libnix lacks. |
+- **id Software:** Quake, and its source under the GNU GPL.
+- **Frank Wille and Steffen Häuser:** the Amiga port (2000).
+- **Christian Michael:** the Amiga GLQuake (2001).
+- **Cowcat:** years of work on the Amiga GLQuake.
+- **Surgeon, LordHavoc, johnfitz, Hedeon, MH** and the other authors whose
+  improvements this source carries.
+- **Dennis Boon and Steffen Häuser:** GLQuake for `minigl.library`, and
+  `minigl.library` 29.1 itself.
+- **Marcus Gerards:** this RadeonGL edition.
 
-Everything else is upstream's code.
+## Licence
 
-## Flags, and their known costs
-
-- **CPU flags.** `-m68060 -m68881` for C, versus upstream's `-mcpu=68020 -m68881`.
-  - The 68020 build is full of instructions the 68060 does not have (FScc, FMOVECR, 64-bit MULx), each a 68060.library trap.
-  - This build passes `check_fpu060.py` (Reflector's tool: no FScc/FDBcc/FTRAPcc).
-- **Known cost: float-to-int casts round.** GCC's 68060 tuning converts with a bare `fmove.l` in the FPCR's rounding mode, so `(int)` casts round to nearest instead of truncating (measured in Reflector, 2026-10-22).
-  - mirq's BlitzQuake build has the same property. Demo playback is unaffected, because the demo carries the server's messages.
-  - If a picture difference ever matters, build with `-m68020-60 -m68881`. Its casts are correct, but it traps on the 060.
-- **`fsincos` stays.** `mathlib68k_gas.s` (with `M881=1`) uses three `fsincos` in `AngleVectors`. The 68060 emulates these through 68060.library; that is a few calls a frame, so it is left as upstream wrote it.
-- **Upstream warnings are left alone.** Implicit declarations of `IN_InitJoy`, `R_LoadSkys`, plus pointer-type warnings in `net_bsdsocket.c` and `snd_ahi.c`.
-
-## Running it on the Amiga
-
-The binary has not been run yet. Copy `dist/Quake/` (with `id1/` from
-`gmake glquake-data`) and a minigl.library 29.1+ into LIBS:, then run
-`GLQuake` from that drawer. Without a working library back end it must stop
-cleanly with the "Unable to open minigl.library" message. That is the first
-thing to check in FS-UAE, where the PiStorm3D library cannot find its V3D.
+GNU General Public License, version 2: see `COPYING`. Quake is copyright
+id Software. The game data is not covered by it and is not included.

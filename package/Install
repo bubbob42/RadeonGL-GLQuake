@@ -1,0 +1,162 @@
+; Install -- Commodore/Amiga Installer script for GLQuake for R200 68k
+; =========================================================================
+; Installs GLQuake (the RadeonGL edition of GLQuake for minigl.library)
+; into the drawer that holds Quake's data drawer, id1:
+;
+;   Files/GLQuake         the 68060 build
+;   Files/GLQuake040      the 68040 build (also runs on a 68060)
+;   Files/PlayQuake(.info) the start script: the build for this CPU
+;   ReadMe(.info)          -> GLQuakeR200.ReadMe(.info)
+;
+; Written for the V44 Installer of AmigaOS 3.2, like RadeonGL's (whose
+; measured traps apply here too). It runs from the package drawer: every
+; (source ...) path is relative to it.
+;
+; A GLQuake there that is not this edition (Search finds no "RadeonGL
+; edition" in it: Aminet's glquake, for example) is kept, renamed to
+; GLQuake.old, or GLQuake.old1 when an .old is there already.
+; minigl.library is not installed here: RadeonGL has its own archive
+; (driver/video/RadeonGL).
+;
+; NOVICE asks nothing: every ask below has a nested-if novice default.
+; WARNING: compare CPUs with (database "cpu" "68060"), the exact form.
+; WARNING: never (exists "Vol:") for a volume that may not be mounted;
+; (getassign "Work" "av") reads the list in memory.
+; WARNING: one substitution per parenthesis pair; join strings with (cat).
+; WARNING: (run) does nothing in Pretend mode unless it is (safe).
+; =========================================================================
+
+(welcome "This will install GLQuake for R200 68k, the RadeonGL edition of "
+         "GLQuake for minigl.library, into your Quake drawer.\n")
+
+(set #minos 40)
+(set #os (/ (getversion) 65536))
+(if (< #os #minos)
+    (abort ("GLQuake requires AmigaOS 3.1 (V%ld) or newer.\n" #minos)
+           ("This system reports Kickstart V%ld.\n" #os))
+)
+
+; --- the CPU and its FPU ---------------------------------------------------
+; Two builds: GLQuake (68060) and GLQuake040 (68040, also fine on a 68060);
+; each refuses a CPU it is not made for. Both are installed; PlayQuake
+; starts the one for this CPU.
+(if (database "fpu" "NOFPU")
+    (abort "GLQuake needs a CPU with a floating-point unit (FPU).\n\n"
+           "This system has none. GLQuake runs on a 68040 or 68060 with FPU.")
+)
+(set #cpuok 0)
+(if (database "cpu" "68040") (set #cpuok 1))
+(if (database "cpu" "68060") (set #cpuok 1))
+(if (= #cpuok 0)
+    (abort "GLQuake for R200 68k needs a 68040 or 68060.\n\n"
+           "This system has a slower processor.")
+)
+(set #build "GLQuake040")
+(if (database "cpu" "68060") (set #build "GLQuake"))
+
+; --- the Quake drawer ------------------------------------------------------
+(set #defbase "SYS:")
+(if (NOT (= (getassign "Work" "av") "")) (set #defbase "Work:"))
+(set #defdest (tackon #defbase "Quake"))
+(if (= @user-level 0)
+    (set #dest #defdest)
+    (set #dest
+        (askdir
+            (prompt "Where is Quake?\n"
+                    "Select the drawer that holds Quake's data drawer, id1.")
+            (help "GLQuake reads its data (pak0.pak, and pak1.pak for the full "
+                  "game) from the id1 drawer beside it. Select the drawer "
+                  "that holds id1. A new drawer is fine too: copy id1 into it "
+                  "before you play.\n\n"
+                  @askdir-help)
+            (default #defdest)
+            (newpath)
+        )
+    )
+)
+(if (<> (exists #dest (noreq)) 2)
+    (makedir #dest
+        (prompt ("Creating the drawer\n%s" #dest))
+        (help @makedir-help)
+    )
+)
+(set @default-dest #dest)
+
+(set #haveid1 0)
+(if (= (exists (tackon #dest "id1") (noreq)) 2) (set #haveid1 1))
+
+; --- a GLQuake that is not this edition ------------------------------------
+(set #kept "")
+(set #old (tackon #dest "GLQuake"))
+(if (= (exists #old (noreq)) 1)
+    (if (<> 0 (run ("Search >NIL: \"%s\" \"RadeonGL edition\" QUIET" #old) (safe)))
+        (
+            (set #keep (tackon #dest "GLQuake.old"))
+            (if (exists #keep (noreq)) (set #keep (tackon #dest "GLQuake.old1")))
+            (if (exists #keep (noreq))
+                (abort ("The drawer %s holds a GLQuake that is not this " #dest)
+                       "edition, and GLQuake.old and GLQuake.old1 are there "
+                       "already.\n\n"
+                       "So that none of them is lost, the installation stops "
+                       "here. Move one of the two away, then install again.")
+            )
+            ; (rename) answers 1 or 0; in Pretend mode it renames nothing
+            (set #renamed
+                (rename #old #keep
+                    (prompt ("Your GLQuake is kept as\n%s" #keep))
+                    (help "The GLQuake in this drawer is not this edition (it "
+                          "may be the one from Aminet's MiniGL_Library_Quake1). "
+                          "It is renamed, not deleted.")
+                )
+            )
+            (if (= @pretend 0)
+                (if (= #renamed 0)
+                    (abort ("%s, which is not this edition, could not be renamed.\n\n" #old)
+                           "So that it is not lost, the installation stops here. "
+                           "Move it away yourself, then install again.")
+                )
+            )
+            (set #kept #keep)
+        )
+    )
+)
+
+; --- the files -------------------------------------------------------------
+(copyfiles
+    (prompt "Copying GLQuake (68060), GLQuake040 (68040) and PlayQuake.")
+    (help "PlayQuake starts the build for your processor. Both builds are "
+          "copied, so a later processor upgrade needs no reinstallation.\n\n"
+          @copyfiles-help)
+    (source "Files")
+    (dest #dest)
+    (all)
+    (infos)
+    (optional "force")
+)
+(copyfiles
+    (prompt "Copying the ReadMe as GLQuakeR200.ReadMe.")
+    (help @copyfiles-help)
+    (source "ReadMe")
+    (dest #dest)
+    (newname "GLQuakeR200.ReadMe")
+    (infos)
+    (optional "force")
+)
+
+; --- done ------------------------------------------------------------------
+(complete 100)
+(set #closing
+    (cat ("GLQuake is in\n%s\n\n" #dest)
+         "Double-click PlayQuake there to play: it starts the build for your "
+         ("processor (here: %s).\n\n" #build)
+         "For the fastest picture on an R200 Radeon, install RadeonGL 0.7 "
+         "or later (driver/video/RadeonGL)."))
+(if (= #haveid1 0)
+    (set #closing
+        (cat #closing
+             "\n\nThere is no id1 drawer there yet: copy Quake's id1 drawer "
+             "(with pak0.pak) into it before you play.")))
+(if (NOT (= #kept ""))
+    (set #closing
+        (cat #closing ("\n\nYour previous GLQuake is kept as\n%s" #kept))))
+(exit #closing)
