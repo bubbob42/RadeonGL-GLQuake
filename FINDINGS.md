@@ -101,14 +101,45 @@ porters marked (Cowcat, Surgeon, MiniGL calls, RadeonGL 2026) -- most in the
 renderer: `gl_rmain.c` (3946 lines), `gl_rsurf.c` (3102), `gl_draw.c`,
 `gl_rlight.c`, `gl_screen.c`.
 
+## Goal: 68040- and 68060-specific optimisation (the user, 2026-11-06)
+
+The optimisations to come target the 68040 and the 68060 specifically, each
+CPU with what it does fast and without what it has to emulate.
+
+What the current binary (`-m68060 -m68881`) makes either CPU emulate --
+counted over the whole disassembly, every instruction class the 040 or the
+060 lacks in hardware:
+
+- **FSINCOS** x3 in `AngleVectors`: emulated on both. The hot one (server
+  physics, the view, every entity) and the path behind the BF00 0002 crash.
+- **FINTRZ** x260, every `(int)` cast: hardware on the 060, emulated on the 040.
+- **FMOVECR** x13, libnix's printf/scanf only: emulated on both, rare.
+- None of the 060's missing integer instructions (64-bit MUL/DIV, MOVEP, CAS2,
+  CHK2/CMP2) and none of FScc/FDBcc/FTRAPcc. (objdump shows 38 "movepw":
+  `switch` jump tables after `jmp (pc,d0.w)`, data, not code.)
+
+Outline, to be worked out and measured:
+
+1. **Two builds**, as RadeonGL does for its library: a 68060 build and a
+   68040 build, each refusing to start on the wrong CPU. To verify: what GCC
+   makes of `(int)` casts with `-m68040` (FINTRZ must not appear there).
+2. **AngleVectors and the other trigonometry** without FSINCOS: a table or a
+   polynomial, for both CPUs.
+3. **The hot paths per CPU**, from the PC profiler (`QuakeProfile`) and the
+   timedemos: the sound mixer (`snd_mixamiga68k`), `mathlib68k`, the world
+   walk and batching, alias models. The 060 pairs instructions (two integer
+   pipelines, branch cache, 8 KB caches); the 040 does not and has 4 KB.
+4. Everything checked on the A4000D (060) and on a 68040 (FS-UAE's 68040
+   machine; real hardware where there is one), demo1-demo3 at 320 x 240 and
+   1280 x 720, as RadeonGL's speed table.
+
 ## Next
 
 1. Diff against id's GPL release (github.com/id-Software/Quake, WinQuake/) to
    see every change of the port, not only the marked ones.
 2. Audit the Amiga files and the porters' renderer changes, interrupt and
    input code first; the five `TRAP #7` paths.
-3. 68k optimisation, measured with the PC profiler (`QuakeProfile`) and the
-   timedemos: AngleVectors, the mixer, `mathlib68k`, per-CPU builds.
+3. The 68040/68060 optimisation above.
 
 ## How it was found
 
