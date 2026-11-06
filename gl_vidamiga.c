@@ -845,7 +845,15 @@ void ChangeWarp_f (void)
 
 void ShowLightmapFormat_f (void)
 {
-	if (COM_CheckParm ("-lm_LUMINANCE"))
+	extern int gl_lightmap_format;	// gl_draw.c; chosen in GL_BuildLightmaps (2026-11-06)
+
+	if (gl_lightmap_format == GL_LUMINANCE)
+		Con_Printf ("lightmapformat: GL_LUMINANCE\n");
+
+	else if (gl_lightmap_format == MGL_UNSIGNED_SHORT_4_4_4_4)
+		Con_Printf ("lightmapformat: MGL_UNSIGNED_SHORT_4_4_4_4\n");
+
+	else if (COM_CheckParm ("-lm_LUMINANCE"))
 		Con_Printf ("lightmapformat: GL_LUMINANCE\n");
 
 	else if (COM_CheckParm ("-lm_ALPHA"))

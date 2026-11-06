@@ -3365,7 +3365,20 @@ void GL_BuildLightmaps (void) // only used at level change - cowcat 2019
 	#ifndef AMIGAOS
 	gl_lightmap_format = GL_RGBA;
 	#else
-	gl_lightmap_format = MGL_UNSIGNED_SHORT_4_4_4_4;
+	/* 2026-11-06: 8-bit lightmaps by default again (id's own default), the
+	 * 16-bit 4444 format only for coloured .lit lightmaps (-litfiles) or
+	 * -lm_4444: the same grey light in 8 bits instead of 4 (finer steps),
+	 * half the bytes to upload whenever a light style or dynamic light
+	 * rebuilds a lightmap. */
+	gl_lightmap_format = GL_LUMINANCE;
+
+	#ifdef LITFILES
+	if (eyecandy)
+		gl_lightmap_format = MGL_UNSIGNED_SHORT_4_4_4_4;
+	#endif
+
+	if (COM_CheckParm ("-lm_4444"))
+		gl_lightmap_format = MGL_UNSIGNED_SHORT_4_4_4_4;
 	#endif
 
 	if (COM_CheckParm ("-lm_LUMINANCE"))
