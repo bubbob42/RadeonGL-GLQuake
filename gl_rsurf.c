@@ -276,29 +276,53 @@ void R_AddDynamicLights (msurface_t *surf)
 
 		#endif
 
-			for (t = 0 ; t < tmax ; t++)
+			/* 2026-11-06: id's loop in integers, the same result. It did
+			 * float work for every texel (two conversions, a compare, a
+			 * multiply). The texel steps are whole numbers, so each float
+			 * step resolves into a floor/ceil taken once per light:
+			 * trunc(L - 16t) is floor(L) - 16t while L >= 16t, else
+			 * ceil(L) - 16t; dist < minlight is dist < ceil(minlight);
+			 * trunc(x + (rad - dist) * 256) is x + floor(rad * 256) -
+			 * 256 * dist. Bit-exact against the float loop evaluated as GCC
+			 * -m68881 does (extended precision, GLQuake's FE_LDBLPREC):
+			 * 2 million random cases on the host with 80-bit long double, 0
+			 * different. Rows and columns outside the light's square
+			 * (dist >= max(sd, td)) are skipped. */
 			{
-				td = local[1] - t*16;
+				int		fl0, cl0, fl1, cl1, iminl, irad, idist, s0, s1, t16;
+				unsigned	*row;
 
-				if (td < 0)
-					td = -td;
+				fl0 = (int) floor (local[0]);
+				cl0 = (int) ceil (local[0]);
+				fl1 = (int) floor (local[1]);
+				cl1 = (int) ceil (local[1]);
+				iminl = (int) ceil (minlight);
+				irad = (int) (rad * 256.0f);
 
-				for (s=0 ; s < smax ; s++)
+				// a superset of the lit columns: sd >= |L - 16s| - 1
+				s0 = fl0 - iminl - 1;
+				s0 = (s0 < 0) ? 0 : s0 >> 4;
+				s1 = (cl0 + iminl + 1) >> 4;
+
+				if (s1 > smax - 1)
+					s1 = smax - 1;
+
+				for (t = 0, t16 = 0 ; t < tmax ; t++, t16 += 16)
 				{
-					sd = local[0] - s*16;
+					td = (fl1 >= t16) ? fl1 - t16 : t16 - cl1;
 
-					if (sd < 0)
-						sd = -sd;
+					if (td >= iminl)
+						continue;
 
-					if (sd > td)
-						dist = sd + (td>>1);
+					row = blocklights + t * smax;
 
-					else
-						dist = td + (sd>>1);
-
-					if (dist < minlight)
+					for (s = s0 ; s <= s1 ; s++)
 					{
-						blocklights[t * smax + s] += (rad - dist)*256; 
+						sd = (fl0 >= s*16) ? fl0 - s*16 : s*16 - cl0;
+						idist = (sd > td) ? sd + (td >> 1) : td + (sd >> 1);
+
+						if (idist < iminl)
+							row[s] += irad - idist * 256;
 					}
 				}
 			}
