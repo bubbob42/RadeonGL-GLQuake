@@ -173,6 +173,10 @@ _anglemod__r:
 	rts
 
 
+| SOFT_TRIG (Makefile.radeongl, the 68060 and 68040 builds; q_cpu.h's
+| Q_SOFT_TRIG): mathlib.c's AngleVectors instead, without FSINCOS, which
+| both CPUs emulate in software (2026-11-06).
+	.ifndef	SOFT_TRIG
 	.globl	_AngleVectors
 	.globl	_AngleVectors__r
 	.balign	4
@@ -325,6 +329,7 @@ _AngleVectors__r:
 	fmove.s	fp5,(a0)
 	fmovem.x (sp)+,fp2-fp7
 	rts
+	.endif	| SOFT_TRIG
 
 
 	.globl	_VectorCompare

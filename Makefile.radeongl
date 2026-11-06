@@ -26,9 +26,15 @@ AS       := $(CROSS)as
 
 SDK      := sdk/minigl-29.1
 QSRC     ?= glquake
-QOBJ     := build/glquake
+# QCPU: 060 (default: dist/Quake/GLQuake, build/glquake) or 040
+# (dist/Quake/GLQuake040, build/glquake040). The source tests q_cpu.h's
+# Q_CPU_060 / Q_CPU_040, which -m68060 / -m68040 select.
+QCPU     ?= 060
+QCPUFLAG := -m68$(QCPU)
+QSUFFIX  := $(if $(filter 060,$(QCPU)),,$(QCPU))
+QOBJ     := build/glquake$(QSUFFIX)
 QOUT     := dist/Quake
-QEXE     := $(QOUT)/GLQuake
+QEXE     := $(QOUT)/GLQuake$(QSUFFIX)
 
 QUAKE_ID1 ?= /Volumes/storage/A4000T_OS314/Games/quake/ID1
 
@@ -39,7 +45,7 @@ QINC     := -I$(QSRC)/gcc_compat -I$(SDK)/minigl-shared-library/include -Iglsmok
             -include $(QSRC)/minigl_client_compat.h
 QOPT     := -O2 -fno-strict-aliasing -fno-builtin-cos -fno-builtin-sin \
             -finline-functions
-QCFLAGS  := -std=gnu99 -noixemul -m68060 -m68881 $(QOPT) $(QDEFS) $(QINC)
+QCFLAGS  := -std=gnu99 -noixemul $(QCPUFLAG) -m68881 $(QOPT) $(QDEFS) $(QINC)
 QASFLAGS := -m68020 -m68881
 
 QFILES := chase cl_demo cl_input cl_main cl_parse cl_tent cmd common console \
@@ -68,15 +74,15 @@ glquake: $(QEXE)
 # on the symbol copy: MEASURED 2026-11-03, that binary (80 KB smaller than
 # the -s link) hung in FS-UAE before the timedemo's first line.
 $(QEXE): $(QOBJS) $(SDK)/lib/libminigl.a | $(QOUT)
-	$(CC) -noixemul -m68060 -m68881 -s -o $@ $(QOBJS) \
+	$(CC) -noixemul $(QCPUFLAG) -m68881 -s -o $@ $(QOBJS) \
 	    -L$(SDK)/lib -lminigl -lm -lamiga
-	$(CC) -noixemul -m68060 -m68881 -o $(QOBJ)/GLQuake.sym $(QOBJS) \
+	$(CC) -noixemul $(QCPUFLAG) -m68881 -o $(QOBJ)/GLQuake.sym $(QOBJS) \
 	    -L$(SDK)/lib -lminigl -lm -lamiga
 
 # Every C object also depends on the forced-in compat header and on this file
 # (flags); Quake's own headers are not tracked -- `gmake clean-glquake` after
 # editing one.
-QDEPS := $(QSRC)/minigl_client_compat.h $(QSRC)/Makefile.radeongl
+QDEPS := $(QSRC)/minigl_client_compat.h $(QSRC)/Makefile.radeongl $(QSRC)/q_cpu.h
 
 $(QOBJ)/net_bsdsocket.o: $(QSRC)/net_bsdsocket.c $(QDEPS) | $(QOBJ)
 	$(CC) $(QCFLAGS) -D__NO_NET_API -c $< -o $@
@@ -87,8 +93,8 @@ $(QOBJ)/%.o: $(QSRC)/%.c $(QDEPS) | $(QOBJ)
 $(QOBJ)/pcprof.o: glsmoke/pcprof.c glsmoke/pcprof.h $(QDEPS) | $(QOBJ)
 	$(CC) $(QCFLAGS) -c $< -o $@
 
-$(QOBJ)/mathlib68k.o: $(QSRC)/mathlib68k_gas.s | $(QOBJ)
-	$(AS) $(QASFLAGS) --defsym M881=1 $< -o $@
+$(QOBJ)/mathlib68k.o: $(QSRC)/mathlib68k_gas.s $(QSRC)/Makefile.radeongl | $(QOBJ)
+	$(AS) $(QASFLAGS) --defsym M881=1 --defsym SOFT_TRIG=1 $< -o $@
 
 $(QOBJ)/%.o: $(QSRC)/%_gas.s | $(QOBJ)
 	$(AS) $(QASFLAGS) $< -o $@

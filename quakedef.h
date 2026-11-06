@@ -49,6 +49,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdlib.h>
 #include <setjmp.h>
 
+#include "q_cpu.h"	// Q_CPU_060 / Q_CPU_040 / Q_CPU_020 (2026-11-06)
+
 #if defined(_WIN32) && !defined(WINDED)
 
 #if defined(_M_IX86)

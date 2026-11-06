@@ -615,10 +615,45 @@ static int __attribute__((noinline)) QuakeOnBigStack (void)
 	return sw_rc;
 }
 
+/* 2026-11-06: each build runs only where it is fast (q_cpu.h). The 68060
+ * build on a 68040 would trap on every (int) cast (FINTRZ, emulated there);
+ * the 68040 build runs on a 68060 too, only slower. */
+#ifndef AFF_68060
+#define AFF_68060	(1L<<7)
+#endif
+
+static int Q_CpuOk (int argc, char *argv[])
+{
+	int	i;
+
+	for (i = 1 ; i < argc ; i++)
+		if (!strcmp (argv[i], "-anycpu"))
+			return 1;	// tests on another CPU (FS-UAE's 68040 machine)
+
+	#if defined(Q_CPU_060)
+	if (!(SysBase->AttnFlags & AFF_68060))
+	{
+		printf("This GLQuake is built for the 68060; on a 68040 use GLQuake040 (or start it with -anycpu).\n");
+		return 0;
+	}
+	#elif defined(Q_CPU_040)
+	if (!(SysBase->AttnFlags & AFF_68040))
+	{
+		printf("This GLQuake is built for the 68040 and 68060.\n");
+		return 0;
+	}
+	#endif
+
+	return 1;
+}
+
 int main (int argc, char *argv[])
 {
 	struct Task *me;
 	int rc;
+
+	if (!Q_CpuOk (argc, argv))
+		return 20;
 
 	me = FindTask(NULL);
 	if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= QUAKE_STACK)

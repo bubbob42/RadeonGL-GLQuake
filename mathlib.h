@@ -79,6 +79,9 @@ void FloorDivMod (double numer, double denom, int *quotient, int *rem);
 fixed16_t Invert24To16(fixed16_t val);
 int GreatestCommonDivisor (int i1, int i2);
 
+#ifdef Q_SOFT_TRIG
+void Q_SinCosDeg (float degrees, float *s, float *c);	// mathlib.c, 2026-11-06
+#endif
 void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up);
 
 #ifndef FASTBOPS

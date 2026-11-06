@@ -703,13 +703,52 @@ int VectorCompare (vec3_t v1, vec3_t v2)
 #endif
 
 
-#if !defined(GLM68KASM) && !defined(GLPPCASM) && !defined(M68KASM) && !defined(PPCASM)
+#ifdef Q_SOFT_TRIG
+/*
+2026-11-06. Sine and cosine of an angle in degrees without FSINCOS: on the
+68040 and 68060 every FSINCOS is an F-line exception and a software routine
+in the 68040/68060.library (and the path behind the guru BF00 0002 when an
+interrupt used the FPU meanwhile). The angle goes to the nearest quarter
+turn and a remainder within 45 degrees; Taylor series to x^9 and x^10 there
+(error below 2e-9, far below a float's), then the quadrant's signs.
+*/
+void Q_SinCosDeg (float degrees, float *s, float *c)
+{
+	double	r, x, x2, sn, cs;
+	int	q;
 
+	r = degrees * (1.0 / 90.0);		// quarter turns
+	q = (int) (r >= 0 ? r + 0.5 : r - 0.5);	// the nearest
+	x = (r - q) * (M_PI / 2);		// within +-pi/4
+	x2 = x * x;
+	sn = x * (1.0 + x2 * (-1.0/6 + x2 * (1.0/120 + x2 * (-1.0/5040 + x2 * (1.0/362880)))));
+	cs = 1.0 + x2 * (-0.5 + x2 * (1.0/24 + x2 * (-1.0/720 + x2 * (1.0/40320 + x2 * (-1.0/3628800)))));
+
+	switch (q & 3)
+	{
+		case 0:	*s = sn;	*c = cs;	break;
+		case 1:	*s = cs;	*c = -sn;	break;
+		case 2:	*s = -sn;	*c = -cs;	break;
+		default: *s = -cs;	*c = sn;	break;
+	}
+}
+#endif
+
+#if defined(Q_SOFT_TRIG) || !(defined(GLM68KASM) || defined(GLPPCASM) || defined(M68KASM) || defined(PPCASM))
 void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 {
-	float	angle;
 	float	sr, sp, sy, cr, cp, cy;
-  
+
+	#ifdef Q_SOFT_TRIG
+
+	Q_SinCosDeg (angles[YAW], &sy, &cy);
+	Q_SinCosDeg (angles[PITCH], &sp, &cp);
+	Q_SinCosDeg (angles[ROLL], &sr, &cr);
+
+	#else
+
+	float	angle;
+
 	angle = angles[YAW] * (M_PI*2 / 360);
 	sy = sin(angle);
 	cy = cos(angle);
@@ -719,6 +758,8 @@ void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 	angle = angles[ROLL] * (M_PI*2 / 360);
 	sr = sin(angle);
 	cr = cos(angle);
+
+	#endif
 
 	forward[0] = cp*cy;
 	forward[1] = cp*sy;
@@ -730,6 +771,9 @@ void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 	up[1] = (cr*sp*sy+-sr*cy);
 	up[2] = cr*cp;
 }
+#endif
+
+#if !defined(GLM68KASM) && !defined(GLPPCASM) && !defined(M68KASM) && !defined(PPCASM)
 
 void VectorMA (vec3_t veca, float scale, vec3_t vecb, vec3_t vecc)
 {
