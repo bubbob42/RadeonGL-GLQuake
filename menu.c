@@ -1144,7 +1144,9 @@ again:
 #ifdef _WIN32
 #define OPTIONS_ITEMS 14
 #else
-#define OPTIONS_ITEMS (13+1) //details by surgeon, +1 for Brightness
+/* 2026-11-06: 13 entries, 0 (Customize details) to 12 (Lookstrafe). It was
+ * 14, which left an empty row 13 for the cursor. */
+#define OPTIONS_ITEMS 13 //details by surgeon, +1 for Brightness, -1 for the empty row
 #endif
 
 #define SLIDER_RANGE  10
@@ -1460,14 +1462,9 @@ void M_Options_Key (int k)
     break;
   }
 
-  //if (options_cursor == 12 && vid_menudrawfn == NULL)
-  if (options_cursor == 12)
-  {
-    if (k == K_UPARROW)
-      options_cursor = 11;
-    else
-      options_cursor = 0;
-  }
+  /* 2026-11-06: id skipped row 12 here, its "Video Options" without a video
+   * menu. Since "Customize details" moved every row down one, row 12 is
+   * Lookstrafe, which the skip made unreachable going down. Gone. */
 
 #ifdef _WIN32
   if ((options_cursor == 14) && (modestate != MS_WINDOWED))
