@@ -681,14 +681,16 @@ loc0:
 		{ 
 			if ( surf->dlightframe != r_dlightframecount ) // not dynamic until now 
 			{ 
-				//surf->dlightbits = bit;
-				surf->dlightbits[num >> 5] = 1U << (num & 31); // extended lights - Cowcat 2019
+				/* 2026-11-06: every word. Only the light's own word was
+				 * reset, so with MAX_DLIGHTS 64 the other word kept the bits
+				 * of earlier frames, and R_AddDynamicLights added those
+				 * lights to surfaces they no longer reach through the BSP
+				 * (through walls, or long dead: wasted work either way). */
+				memset (surf->dlightbits, 0, sizeof(surf->dlightbits));
 				surf->dlightframe = r_dlightframecount;
 			}
- 
-			else // already dynamic 
-				//surf->dlightbits |= bit;
-				surf->dlightbits[num >> 5] |= 1U << (num & 31); // Cowcat 2019
+
+			surf->dlightbits[num >> 5] |= 1U << (num & 31); // extended lights - Cowcat 2019
 		}
 	}
 
