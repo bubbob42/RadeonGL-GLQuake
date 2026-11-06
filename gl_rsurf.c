@@ -1786,10 +1786,29 @@ void R_DrawWaterSurfaces (void)
 			alphapass = true;
 		}
 
-		for ( s = waterchain ; s ; s=s->texturechain)
 		{
-			GL_Bind(s->texinfo->texture->gl_texturenum); // texture repeated, but few use no texsort - Cowcat 2019
-			EmitWaterPolys (s);
+			/* 2026-11-06: never more steps than the map has surfaces -- a
+			 * ring (R_DrawWorld) would otherwise draw for ever */
+			int	steps = 0;
+
+			for ( s = waterchain ; s ; s=s->texturechain)
+			{
+				if (++steps > cl.worldmodel->numsurfaces)
+				{
+					extern int r_scene_prev;
+					static int ring_reports;
+
+					if (ring_reports < 50)
+					{
+						Sys_Printf ("R_DrawWaterSurfaces: waterchain ring after %d surfaces (last scene phase %d); cut\n",
+							cl.worldmodel->numsurfaces, r_scene_prev);
+						ring_reports++;
+					}
+					break;
+				}
+				GL_Bind(s->texinfo->texture->gl_texturenum); // texture repeated, but few use no texsort - Cowcat 2019
+				EmitWaterPolys (s);
+			}
 		}
     
 		waterchain = NULL;
@@ -2550,6 +2569,28 @@ void R_DrawWorld (void)
 	glColor3f (1,1,1); // needed? Cowcat 2019
 
 	memset (lightmap_polys, 0, sizeof(lightmap_polys));
+
+	/* 2026-11-06: the water and sky chains are empty when a walk starts --
+	 * unless the last scene stopped before its water pass (gl_rmain.c,
+	 * r_scene_phase). Linked again they would close into a ring and
+	 * R_DrawWaterSurfaces would never end (MEASURED, the A4000D). Reported
+	 * (stdout, -stdout) and emptied. */
+	{
+		extern int r_scene_prev;
+		static int stale_reports;
+
+		if (waterchain || skychain)
+		{
+			if (stale_reports < 50)
+			{
+				Sys_Printf ("R_DrawWorld: stale%s%s chain, the last scene stopped at phase %d; emptied\n",
+					waterchain ? " water" : "", skychain ? " sky" : "", r_scene_prev);
+				stale_reports++;
+			}
+			waterchain = NULL;
+			skychain = NULL;
+		}
+	}
 
 	if(r_skybox)
 		R_ClearSkyBox ();
