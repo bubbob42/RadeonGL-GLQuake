@@ -1,0 +1,117 @@
+Short:        GLQuake for R200 Radeons on 68k
+Uploader:     marcus.gerards@googlemail.com (Marcus Gerards)
+Author:       id Software, D. Boon, S. Haeuser, Cowcat, M. Gerards et al.
+Type:         game/shoot
+Version:      1.0
+Architecture: m68k-amigaos >= 3.1
+Distribution: Aminet
+Requires:     A Radeon 8500, 9000, 9100, 9200 or 9250 with
+              driver/video/RadeonGL 0.7+ (Picasso96 3.6+); a 68060, or
+              a 68040 (second build), with FPU; AmigaOS 3.1+; the Quake
+              data (id1 drawer). Also runs on any other
+              minigl.library 29.1.
+Kurz:         GLQuake fuer R200-Radeons am 68k
+
+GLQuake for R200 68k  --  RadeonGL edition 1.0  --  6.11.2026
+
+
+WHAT IT IS
+
+GLQuake for 68k Amigas with an R200 Radeon: the Radeon draws through
+RadeonGL (driver/video/RadeonGL), the minigl.library for these cards on
+Picasso96. It is Dennis Boon's and Steffen Haeuser's GLQuake for
+minigl.library (game/shoot/MiniGL_Library_Quake1), built for the 68060
+and the 68040, with crash fixes, picture fixes and a faster renderer --
+and it uses RadeonGL's own extension to keep the world in the card's
+memory and let the card cull and depth-test whole chunks of it.
+
+It stays a plain minigl.library 29.1 program: on PiStorm3D, the classic
+MiniGL or any other minigl.library 29.1 it runs too, with the classic
+drawing instead of RadeonGL's extension.
+
+
+WHAT IS NEW AGAINST THE ARCHIVE IT COMES FROM
+
+Fixes:
+  - no more guru BF00 0002 and no frozen water on a 68060: the sound
+    interrupt no longer uses the FPU
+  - no more bright pixels at polygon seams (gl_keeptjunctions 1)
+  - mouse look follows the mouse at any frame rate (no lost movement)
+  - the mouse pointer stays hidden (with RadeonGL 0.7)
+  - options menu: no empty last row, Lookstrafe reachable again
+  - dynamic lights no longer shine through walls
+  - two crashes in the QuakeC value printer (savegames) are gone
+
+Speed:
+  - a 68060 build and a 68040 build, each without instructions its CPU
+    would have to emulate
+  - the world from a vertex array built at level load; with RadeonGL
+    0.7 it stays in video memory and the card draws whole chunks
+  - 8-bit lightmaps by default, faster world walk, cheaper models,
+    lights, text and sound mixing
+
+SPEED
+
+GLQuake's timedemo (all frames, no sound) on an A4000D: 68060/50
+(CyberStorm MK II), Mediator, Radeon 9200, AmigaOS 3.2, Picasso96 3.6,
+RadeonGL's command check off. Frames a second:
+
+    Demo   Screen       before    1.0 with RadeonGL 0.7
+    demo1  320 x 240      24.4    29.4   (+20%)
+    demo1  640 x 480      23.7    28.7   (+21%)
+    demo1  1280 x 720     23.3    28.0   (+20%)
+    demo2  320 x 240      21.7    25.1   (+16%)
+    demo2  1280 x 720     17.9    21.1   (+18%)
+    demo3  320 x 240      21.4    25.6   (+20%)
+    demo3  1280 x 720     19.9    24.0   (+21%)
+
+"Before": the Aminet source already built for the 68060 and with the
+sound interrupt fixed, on RadeonGL 0.6. The Aminet binary itself is a
+68020 build and slower still on a 68060 (a tester's 68060/75: 27 fps in
+demo1 at 320 x 240; this edition 43.0). The 68060 sets the pace, not the
+Radeon: 1280 x 720 costs little more than 320 x 240.
+
+
+INSTALLATION
+
+Install RadeonGL 0.7 or later first. Then double-click Install in this
+package: it asks for the drawer that holds Quake's data drawer (id1) and
+copies GLQuake, GLQuake040, the start script PlayQuake and the ReadMe
+there; a GLQuake already there that is not this edition is kept as
+GLQuake.old. Double-click PlayQuake to play: it starts the build for
+your CPU, with RadeonGL's command check off. ReadMe has the details and
+the new options.
+
+
+SOURCE CODE
+
+The complete source is in the archive's Source drawer.
+
+
+MADE WITH AI
+
+This edition was made with the help of AI. Claude, an AI model by
+Anthropic, wrote most of the changes, the tests and the documentation,
+working under the direction of Marcus Gerards, who made the design
+decisions. Every change was measured and tested on real hardware.
+
+
+CREDITS
+
+id Software (Quake, GPL source); Frank Wille and Steffen Haeuser (the
+Amiga port); Christian Michael (the Amiga GLQuake); Cowcat; Surgeon,
+LordHavoc, johnfitz, Hedeon, MH and the other authors in the source;
+Dennis Boon and Steffen Haeuser (GLQuake for minigl.library, and
+minigl.library 29.1); Marcus Gerards (this edition and RadeonGL).
+
+
+LICENCE
+
+GNU General Public License version 2 (COPYING). Quake is copyright
+id Software. The game data is not included.
+
+
+HISTORY
+
+1.0 (6.11.2026)
+  - first release
