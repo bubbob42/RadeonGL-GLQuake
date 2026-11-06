@@ -48,10 +48,34 @@ if [ $STAGEONLY = 1 ]; then
 	exit 0
 fi
 
+# Amiga LhA under vamos runs out of locks over some hundred files ("no more
+# lock slots! max=1024"): pack in parts, join with RadeonGL's join_lha.py
+P=$STAGE/parts
+mkdir -p "$P/pkg"
+cp "$STAGE/GLQuakeR200.info" "$P/pkg/"
+mkdir -p "$P/pkg/GLQuakeR200"
+for e in "$D"/*; do
+	[ "$(basename "$e")" = Source ] || cp -R "$e" "$P/pkg/GLQuakeR200/"
+done
+n=0; k=0
+for f in "$D"/Source/* "$D"/Source/.[!.]*; do
+	[ -f "$f" ] || continue
+	[ $n = 0 ] && { k=$((k+1)); mkdir -p "$P/top$k/GLQuakeR200/Source"; }
+	cp "$f" "$P/top$k/GLQuakeR200/Source/"
+	n=$(( (n+1) % 100 ))
+done
+for d in "$D"/Source/*/; do
+	d=$(basename "$d")
+	mkdir -p "$P/src-$d/GLQuakeR200/Source"
+	cp -R "$D/Source/$d" "$P/src-$d/GLQuakeR200/Source/"
+done
+for r in $(ls "$P"); do
+	(cd "$P/$r" && "$HOME/Developer/AmigaTools/venv-amitools/bin/vamos" -c "$R/.vamosrc" -q -H disable -C 68020 -m 131072 -- \
+		"$HOME/Developer/AmigaTools/Lha_40/Lha" -r a "proj:build/glquake-release/parts/$r.lha" "#?" >/dev/null)
+done
+python3 -I "$R/tools/join_lha.py" "$STAGE/GLQuakeR200.lha" $(ls "$P"/*.lha)
+python3 -I "$R/tools/check_lha_bits.py" "$STAGE/GLQuakeR200.lha" $(find "$D" "$STAGE/GLQuakeR200.info" -type f | wc -l)
 cd "$STAGE"
-rm -f GLQuakeR200.lha
-"$HOME/Developer/AmigaTools/venv-amitools/bin/vamos" -c "$R/.vamosrc" -q -H disable -C 68020 -m 131072 -- \
-	"$HOME/Developer/AmigaTools/Lha_40/Lha" -r a proj:build/glquake-release/GLQuakeR200.lha GLQuakeR200 GLQuakeR200.info >/dev/null
 mkdir -p "$HERE/release"
 cp GLQuakeR200.lha "$HERE/release/GLQuakeR200.lha"
 echo "make_release: release/GLQuakeR200.lha, GLQuake $VER ($(ls -l GLQuakeR200.lha | awk '{print $5}') bytes)"
