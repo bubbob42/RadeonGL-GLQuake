@@ -2399,9 +2399,14 @@ R_RecursiveWorldNode
 ================
 */
 
-void R_RecursiveWorldNode (mnode_t *node)
+/* clipflags (2026-11-06): bit i set = frustum plane i still to test. A node
+ * wholly on the inner side of a plane passes the bit on cleared, so its whole
+ * subtree skips that plane, as Quake's software renderer does; the walk tested
+ * all four planes at every node (BoxOnPlaneSide0..7: 2.2 ms of a demo1 frame
+ * on the A4000D, research 2026-11-03). Start with 15. */
+void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 {
-	int		c, side;
+	int		c, side, ci, cs;
 	mplane_t	*plane; 
 	msurface_t	*surf, **mark;
 	mleaf_t		*pleaf;
@@ -2414,8 +2419,19 @@ loc0:
 	if (node->visframe != r_visframecount)
 		return;
 
-	if (R_CullBox (node->mins, node->maxs)) // was (node->minmaxs, node->minmaxs+3)
-		return;
+	for (ci = 0 ; clipflags && ci < 4 ; ci++)
+	{
+		if (!(clipflags & (1 << ci)))
+			continue;
+
+		cs = BOX_ON_PLANE_SIDE (node->mins, node->maxs, &frustum[ci]);
+
+		if (cs == 2)
+			return;				// wholly outside this plane
+
+		if (cs == 1)
+			clipflags &= ~(1 << ci);	// wholly inside: the subtree skips it
+	}
 
 	// if a leaf node, draw stuff
 	if (node->contents < 0)
@@ -2459,7 +2475,7 @@ loc0:
 
 	if(node->children[side]->contents != CONTENTS_SOLID && node->children[side]->visframe == r_visframecount)
 	{	
-		R_RecursiveWorldNode (node->children[side]);
+		R_RecursiveWorldNode (node->children[side], clipflags);
 	}
 
 	// draw stuff
@@ -2535,7 +2551,7 @@ loc0:
 
 	#if 0
 
-	R_RecursiveWorldNode (node->children[!side]);
+	R_RecursiveWorldNode (node->children[!side], clipflags);
 
 	#else
 
@@ -2595,7 +2611,7 @@ void R_DrawWorld (void)
 	if(r_skybox)
 		R_ClearSkyBox ();
 
-	R_RecursiveWorldNode (cl.worldmodel->nodes);
+	R_RecursiveWorldNode (cl.worldmodel->nodes, 15);
 
 	R_FlushWorldBatches ();		// the walk's queued surfaces, still ahead of the sky and water
 
@@ -2604,7 +2620,7 @@ void R_DrawWorld (void)
 	{
 		wireframe = true;
 		glDisable(GL_DEPTH_TEST);
-		R_RecursiveWorldNode (cl.worldmodel->nodes);
+		R_RecursiveWorldNode (cl.worldmodel->nodes, 15);
 		glEnable(GL_DEPTH_TEST);
 		wireframe = false;
 	}
