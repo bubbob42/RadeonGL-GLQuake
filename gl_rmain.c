@@ -128,7 +128,11 @@ cvar_t	gl_polyblend = {"gl_polyblend","1"};
 cvar_t	gl_flashblend = {"gl_flashblend","1"};
 cvar_t	gl_playermip = {"gl_playermip","0"};
 cvar_t	gl_nocolors = {"gl_nocolors","0"};
-cvar_t	gl_keeptjunctions = {"gl_keeptjunctions","0"};
+/* 2026-11-06: 1 by default. 0 drops "collinear" edge points when the level
+ * loads, which leaves hairline cracks where a neighbouring polygon keeps a
+ * vertex on that edge: single bright pixels at seams, at some angles (seen on
+ * the A4000D; gone with 1). */
+cvar_t	gl_keeptjunctions = {"gl_keeptjunctions","1"};
 cvar_t	gl_reporttjunctions = {"gl_reporttjunctions","0"};
 cvar_t	gl_doubleeyes = {"gl_doubleeyes", "1"};
 
