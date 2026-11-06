@@ -732,6 +732,36 @@ void Q_SinCosDeg (float degrees, float *s, float *c)
 		default: *s = -cs;	*c = sn;	break;
 	}
 }
+
+/*
+2026-11-06. Sine of an angle in radians without FSIN, for the underwater warp
+(DrawGLWaterPoly and its kin: three a vertex, every frame). libnix's sin()
+goes through mathieeedoubtrans.library: in demo2 at 1280 x 720 those calls
+took 15% of the A4000D's time. The angle goes to quarter turns; q is whatever
+the cast gives (GCC's 68060 build rounds it, the 68040 build truncates), so
+the remainder lies within +-pi/2 either way. Taylor series to x^11 and x^12
+cover that range: within 9e-8 of sin() (host test, both casts), a float's
+own rounding.
+*/
+float Q_Sin (double radians)
+{
+	double	r, x, x2;
+	int	q;
+
+	r = radians * (2.0 / M_PI);		// quarter turns
+	q = (int) r;
+	x = (r - q) * (M_PI / 2);		// within +-pi/2
+	x2 = x * x;
+
+	if (q & 1)	// a quarter or three: the cosine
+		r = 1.0 + x2 * (-1.0/2 + x2 * (1.0/24 + x2 * (-1.0/720 + x2 * (1.0/40320
+			+ x2 * (-1.0/3628800 + x2 * (1.0/479001600))))));
+	else
+		r = x * (1.0 + x2 * (-1.0/6 + x2 * (1.0/120 + x2 * (-1.0/5040 + x2 * (1.0/362880
+			+ x2 * (-1.0/39916800))))));
+
+	return (q & 2) ? -r : r;	// a half turn more: the sign
+}
 #endif
 
 #if defined(Q_SOFT_TRIG) || !(defined(GLM68KASM) || defined(GLPPCASM) || defined(M68KASM) || defined(PPCASM))

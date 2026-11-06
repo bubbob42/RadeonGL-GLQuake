@@ -53,5 +53,15 @@ RadeonGL with the static-arrays hint, check off, ABBA.
 - Profile now (qprof-snd, with sound): library 44% (flush/bus 10%, arrays
   7%, index packing 3.4%, validation 3.2%), world walk 9.4%, alias batch
   5.6%, world chunk flush 5.3%, sound 7%.
-- Next: B1 (mouse), B2 (TRAP #7), the 68040 build tested in FS-UAE,
-  then the library side (bus bytes) or the alias blend.
+- Later the same day (1.0: demo1 29.4 fps at 320 x 240): whole chunks
+  (RadeonGL's index lists, the card culls), the world walk with its own
+  stack, B1, B2, the 68040 build in FS-UAE.
+- After 1.0: the underwater warp's sine (`Q_Sin`, FINDINGS): demo2
+  24.5 -> 28.85 fps at 320 x 240, 21.0 -> 23.5 at 1280 x 720.
+- Profile of 1.0 (qprof-10, no sound): demo1 at 320 x 240 -- library 49%
+  (flush 10%, arrays 6%, index packing 4%, validation 3.5%), world walk 8%,
+  alias frames 6%, chunk flush 4.5%. demo2 at 1280 x 720 -- 7% waiting in
+  `p96LockBitMap` (P96 waits for the card to go idle before a lock: the
+  Radeon is still on the last frame), 15% in `sin()` (now gone).
+- Next: the library side -- the lock wait at high resolutions (overlap)
+  and the flush; on the program side the alias frames.

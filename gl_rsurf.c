@@ -1089,13 +1089,13 @@ void R_DrawSequentialPoly (msurface_t *s)
 
 		for (i=0 ; i<p->numverts ; i++, v+= VERTEXSIZE)
 		{
-			temp = sin(v[2]*0.05+realtime); // Cowcat
+			temp = Q_SIN(v[2]*0.05+realtime); // Cowcat
 
 			glMultiTexCoord2fvARB (GL_TEXTURE0_ARB, (v+3));
 			glMultiTexCoord2fvARB (GL_TEXTURE1_ARB, (v+5));
 			
-			nv[0] = v[0] + 8*sin(v[1]*0.05+realtime)*temp;
-			nv[1] = v[1] + 8*sin(v[0]*0.05+realtime)*temp;
+			nv[0] = v[0] + 8*Q_SIN(v[1]*0.05+realtime)*temp;
+			nv[1] = v[1] + 8*Q_SIN(v[0]*0.05+realtime)*temp;
 			nv[2] = v[2];
 
 			glVertex3fv (nv);
@@ -1144,7 +1144,9 @@ void R_DrawSequentialPoly (msurface_t *s)
 ================
 DrawGLWaterPoly
 
-Warp the vertex coordinates
+Warp the vertex coordinates. Q_SIN (mathlib.h): on the 68040 and 68060
+mathlib.c's own sine, not libnix's sin() through mathieeedoubtrans.library
+(2026-11-06; also in R_DrawSequentialPoly and DrawGLWaterPolyLightmap).
 ================
 */
 
@@ -1163,12 +1165,12 @@ void DrawGLWaterPoly (glpoly_t *p)
 
 	for (i=0 ; i<p->numverts ; i++, v+= VERTEXSIZE)
 	{
-		temp = sin(v[2]*0.05+realtime); // Cowcat
+		temp = Q_SIN(v[2]*0.05+realtime); // Cowcat
 		
 		glTexCoord2f (v[3], v[4]);
 		
-		nv[0] = v[0] + 8*sin(v[1]*0.05+realtime) * temp;
-		nv[1] = v[1] + 8*sin(v[0]*0.05+realtime) * temp; 
+		nv[0] = v[0] + 8*Q_SIN(v[1]*0.05+realtime) * temp;
+		nv[1] = v[1] + 8*Q_SIN(v[0]*0.05+realtime) * temp; 
 		nv[2] = v[2];
 
 		glVertex3fv (nv);
@@ -1192,12 +1194,12 @@ void DrawGLWaterPolyLightmap (glpoly_t *p)
 
 	for (i=0 ; i<p->numverts ; i++, v+= VERTEXSIZE)
 	{
-		temp = sin(v[2]*0.05+realtime); // Cowcat
+		temp = Q_SIN(v[2]*0.05+realtime); // Cowcat
 
 		glTexCoord2f (v[5], v[6]);
 
-		nv[0] = v[0] + 8*sin(v[1]*0.05+realtime) * temp;
-		nv[1] = v[1] + 8*sin(v[0]*0.05+realtime) * temp;
+		nv[0] = v[0] + 8*Q_SIN(v[1]*0.05+realtime) * temp;
+		nv[1] = v[1] + 8*Q_SIN(v[0]*0.05+realtime) * temp;
 		nv[2] = v[2];
 		
 		glVertex3fv (nv);

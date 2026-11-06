@@ -81,6 +81,10 @@ int GreatestCommonDivisor (int i1, int i2);
 
 #ifdef Q_SOFT_TRIG
 void Q_SinCosDeg (float degrees, float *s, float *c);	// mathlib.c, 2026-11-06
+float Q_Sin (double radians);				// mathlib.c, 2026-11-06
+#define Q_SIN(x)	Q_Sin(x)
+#else
+#define Q_SIN(x)	sin(x)
 #endif
 void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up);
 

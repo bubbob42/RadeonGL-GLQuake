@@ -1,4 +1,4 @@
-# GLQuake for minigl.library -- RadeonGL edition 1.0
+# GLQuake for minigl.library -- RadeonGL edition 1.1
 
 GLQuake for AmigaOS 3.x on a 68040 or 68060, as a `minigl.library` 29.1
 client (dispatch interface ABI 5). It runs on any `minigl.library` 29.1:
@@ -33,6 +33,10 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   bits of earlier frames).
 - **Two crashes in the QuakeC value printer** (a field value without a
   field; the savegame writer uses it) are gone.
+- **68040: the underwater warp no longer uses libnix's `sin()`** (1.1). On
+  FS-UAE's 68040 with AmigaOS 3.2's `mathieeedoubtrans.library` 47.2 that
+  returned wrong values for large angles, and the warp's angles grow with
+  the time played. Not checked on a real 68040.
 
 **Speed** (measured on a 68060/50, see the table below)
 
@@ -45,6 +49,9 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   hidden. Other libraries get the classic batches.
 - 8-bit lightmaps by default (id's own default): finer light steps and half
   the data to upload. `-lm_4444` gives the old 16-bit ones.
+- Underwater surfaces (1.1): their wobble takes three sines a vertex every
+  frame, now GLQuake's own instead of calls into
+  `mathieeedoubtrans.library`: demo2 +17% against 1.0.
 - The world walk: frustum clip flags, an inline frustum test, no recursion.
 - Alias models: one colour per normal instead of per vertex; the light
   under a model that does not move is not traced again every frame.
@@ -101,18 +108,22 @@ GLQuake's `timedemo`, all frames, no sound, on an A4000D: 68060 at 50 MHz
 (CyberStorm MK II), Mediator, Radeon 9200, AmigaOS 3.2, Picasso96 3.6,
 RadeonGL with its command check off (`RadeonGLCheck=0`). Frames a second:
 
-| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | this edition 1.0, RadeonGL 0.7 | |
+| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | this edition 1.1, RadeonGL 0.7 | |
 |---|---|---:|---:|---:|
 | demo1 | 320 x 240 | 24.4 | **29.4** | +20% |
 | demo1 | 640 x 480 | 23.7 | **28.7** | +21% |
 | demo1 | 1280 x 720 | 23.3 | **28.0** | +20% |
-| demo2 | 320 x 240 | 21.7 | **25.1** | +16% |
-| demo2 | 1280 x 720 | 17.9 | **21.1** | +18% |
+| demo2 | 320 x 240 | 21.7 | **28.9** | +33% |
+| demo2 | 1280 x 720 | 17.9 | **23.5** | +31% |
 | demo3 | 320 x 240 | 21.4 | **25.6** | +20% |
 | demo3 | 1280 x 720 | 19.9 | **24.0** | +21% |
 
 The left column is the Aminet source as RadeonGL measured it before this
 edition: already built for the 68060 and with the sound interrupt fixed.
+1.1 changed demo2 only: against 1.0 in the same session, 24.5 -> 28.9 at
+320 x 240 and 21.0 -> 23.5 at 1280 x 720 (1.0's figures above were taken
+on another day, 25.1 and 21.1). demo1 and demo3 have almost no underwater
+surfaces.
 The Aminet binary itself is built for the 68020 and slower still on a
 68060: a tester's 68060/75 ran it at 27 fps in demo1 at 320 x 240, and
 this edition's 68060 build at 43.0.
@@ -137,6 +148,12 @@ Toolchain: m68k-amigaos-gcc 6.5 with libnix (`-noixemul`), GAS for the
 `tools/scan_emul.py` lists every instruction of a binary that a 68040 or
 68060 would have to emulate. `FINDINGS.md` holds the audit notes and
 `PLAN.md` the work plan.
+
+## History
+
+- **1.1** (6.11.2026): underwater surfaces with GLQuake's own sine (demo2
+  +17%; on a 68040 no longer through `mathieeedoubtrans.library`'s `sin()`).
+- **1.0** (6.11.2026): first release.
 
 ## Made with AI
 

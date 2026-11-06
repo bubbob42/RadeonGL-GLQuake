@@ -104,6 +104,31 @@ or polynomial `AngleVectors` would be faster and avoid the 68060.library's
 emulation altogether (the path that crashed). FINTRZ makes a 68060 binary
 slow on a 68040: a 68040 build wants a different cast (or `-m68040`).
 
+### libnix sin() is a call into mathieeedoubtrans.library (2026-11-06)
+
+`-fno-builtin-sin` (the build's flags) makes every `sin()` libnix's, and
+libnix's is a stub into `mathieeedoubtrans.library` (47.2 on 3.2). The
+underwater warp (`R_DrawSequentialPoly`, `DrawGLWaterPoly`,
+`DrawGLWaterPolyLightmap`: every surface below a water line, excluded from
+the static chunks) calls it three times a vertex every frame. PROFILED,
+A4000D, demo2 at 1280 x 720: 15% of the time in those calls. Now
+`Q_SIN()` (mathlib.h): mathlib.c's `Q_Sin` on the 68040 and 68060, `sin()`
+on the 68020. demo2, ABBA: 24.5 -> 28.85 fps at 320 x 240 (+17%), 21.0 ->
+23.5 at 1280 x 720 (+12%); demo1 and demo3 unchanged (no warped surfaces).
+
+Checked against Python's `math.sin` (values listed on the Amiga, recomputed
+on the host): worst 9.9e-8 on the 68060 (A4000D), 7.8e-8 on the 68040
+(FS-UAE), a float's own rounding.
+
+**MEASURED on FS-UAE's 68040** (3.2, mathieeedoubtrans.library 47.2,
+68040.library 46.3): libnix `sin()` is right up to 12 radians and garbage
+from 100 on (values beyond 2^31); the FSIN instruction itself is right at
+every angle, and the same library on the A4000D's 68060 is right too. The
+warp's angles are `coordinate * 0.05 + realtime`: in the hundreds within
+seconds. If a real 68040 behaves the same, the 1.0 `GLQuake040` threw
+underwater surfaces apart there; `Q_Sin` does not use the library. Not
+checked on a real 68040 (none here).
+
 ## Size of the port
 
 The RadeonGL build compiles 70 of the 141 C files (the rest: other platforms,
