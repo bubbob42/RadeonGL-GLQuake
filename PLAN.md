@@ -40,4 +40,9 @@ here); its speed needs a tester with hardware.
   GL_RGL_static_arrays hint, +7% (26.2 vs 24.45 fps at 320 x 240); needs
   RadeonGL 0.7 (the hint is in its working tree, not released). Without the
   hint the array loses (the library hashes it): off by default there.
-- Next: B1.
+- Done 2026-11-06 as well: integer dynamic-light loop (bit-exact, +0.5%),
+  stale light bits cleared (correctness, no speed change), 2D text as one
+  draw a line (+1 to +2%).
+- Next hot spots: alias models (pose decode, per-vertex colour from a
+  162-entry table, R_LightPoint cache for still entities), water as arrays.
+  Then B1.
