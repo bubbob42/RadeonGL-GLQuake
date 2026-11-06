@@ -315,11 +315,47 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count, int paintb
         rscale = snd_scaletable[ch->rightvol >> 3];
         sfx = (unsigned char *)sc->data + ch->pos; // was signed char - Cowcat 2019
 
-        for (i=0 ; i<count ; i++)
+        /* 2026-11-06: through pointers (GCC had kept snd_scaletable's
+         * absolute address in every load: the long extension-word form, slow
+         * on the 68060). The 68060 build does four samples a pass, the two
+         * channels' loads and adds interleaved for its two integer pipes.
+         * The same sums. */
         {
-                data = sfx[i];
-                paintbuffer[paintbufferstart + i].left += lscale[data];
-                paintbuffer[paintbufferstart + i].right += rscale[data];
+                portable_samplepair_t   *pb = paintbuffer + paintbufferstart;
+                const int               *ls = lscale, *rs = rscale;
+                const unsigned char     *sp = sfx;
+
+                #ifdef Q_CPU_060
+                for (i = count >> 2 ; i > 0 ; i--)
+                {
+                        int     d0, d1, d2, d3;
+
+                        d0 = sp[0];
+                        d1 = sp[1];
+                        d2 = sp[2];
+                        d3 = sp[3];
+                        sp += 4;
+                        pb[0].left += ls[d0];
+                        pb[0].right += rs[d0];
+                        pb[1].left += ls[d1];
+                        pb[1].right += rs[d1];
+                        pb[2].left += ls[d2];
+                        pb[2].right += rs[d2];
+                        pb[3].left += ls[d3];
+                        pb[3].right += rs[d3];
+                        pb += 4;
+                }
+
+                for (i = count & 3 ; i > 0 ; i--)
+                #else
+                for (i = count ; i > 0 ; i--)
+                #endif
+                {
+                        data = *sp++;
+                        pb->left += ls[data];
+                        pb->right += rs[data];
+                        pb++;
+                }
         }
   
         ch->pos += count;

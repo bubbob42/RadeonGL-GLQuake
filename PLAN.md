@@ -32,17 +32,26 @@ here); its speed needs a tester with hardware.
 
 ## Status
 
-- Done: the audio interrupt fix (9929f3b), the safety net (0014834),
-  FINDINGS.md.
-- D-clip done: frustum clip flags in the world walk, about +1% (the
-  profile promised more: most nodes are decided high in the tree).
-- D-world done: the static world vertex array with RadeonGL's
-  GL_RGL_static_arrays hint, +7% (26.2 vs 24.45 fps at 320 x 240); needs
-  RadeonGL 0.7 (the hint is in its working tree, not released). Without the
-  hint the array loses (the library hashes it): off by default there.
-- Done 2026-11-06 as well: integer dynamic-light loop (bit-exact, +0.5%),
-  stale light bits cleared (correctness, no speed change), 2D text as one
-  draw a line (+1 to +2%).
-- Next hot spots: alias models (pose decode, per-vertex colour from a
-  162-entry table, R_LightPoint cache for still entities), water as arrays.
-  Then B1.
+All figures: A4000D (68060/50, Mediator, Radeon 9200), demo1 timedemo,
+RadeonGL with the static-arrays hint, check off, ABBA.
+
+- Done 2026-11-06 (morning 24.45 fps at 320 x 240 -> 28.05 in the evening,
+  about +15%):
+  - frustum clip flags +1%, static world array with the hint +7%
+  - integer dynamic-light loop +0.5%, stale light bits cleared (bug fix)
+  - 2D text one draw a line +1 to 2%
+  - C1/C2/D1: q_cpu.h defines, GLQuake040 (QCPU=040), CPU check (-anycpu),
+    AngleVectors without FSINCOS (+0.4% in a timedemo; more in play, and
+    no emulation on the 040), tools/scan_emul.py
+  - alias models: colour per normal + R_LightPoint cache +2%
+  - 8-bit lightmaps by default (-lm_4444 for the old) +3%
+  - frustum test inline in the world walk +1.8%, lightmaps' first style
+    stored +0.4%
+  - sound mixer: the 8-bit paint loop through pointers, 4 samples a pass
+    on the 060: +0.6% with sound (sound costs 7% in all: 27.9 -> 25.9 fps)
+- Tried and dropped: particles as arrays (-1.2%), kept index lists (0).
+- Profile now (qprof-snd, with sound): library 44% (flush/bus 10%, arrays
+  7%, index packing 3.4%, validation 3.2%), world walk 9.4%, alias batch
+  5.6%, world chunk flush 5.3%, sound 7%.
+- Next: B1 (mouse), B2 (TRAP #7), the 68040 build tested in FS-UAE,
+  then the library side (bus bytes) or the alias blend.
