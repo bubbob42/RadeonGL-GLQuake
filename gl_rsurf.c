@@ -2069,9 +2069,15 @@ typedef struct
 	int		texnum;		// this frame's texture, animation resolved
 	msurface_t	*chain;		// this frame's visible surfaces, through texturechain
 	int		next;		// 1 + the next queued chunk, 0 ends
+	int		model;		// the submodel its surfaces belong to (0: the world)
+	unsigned short	*fidx;		// all its surfaces' triangles, built at load
+	int		nfidx;
 } worldchunk_t;
 
 static float		*worldva;		// VERTEXSIZE floats per vertex, chunk by chunk
+static unsigned short	*worldvafidx;		// the chunks' full index lists
+static int		*worldvamodelof;	// per surface: its submodel (0: the world)
+static int		worldvawhole;		// draw whole chunks (R_BuildWorldVertexArray)
 static worldchunk_t	*worldchunks;
 static int		numworldchunks;
 static int		*worldvachunk;		// per surface of worldvamodel: 1 + its chunk, 0 none
@@ -2090,6 +2096,10 @@ static int		worldvastatic;		// the library keys the chunks by address (below)
 #ifndef GL_RGL_STATIC_ARRAYS_HINT
 #define GL_RGL_STATIC_ARRAYS_HINT	0x52474c01
 #endif
+#ifndef GL_RGL_STATIC_INDICES_HINT
+#define GL_RGL_STATIC_INDICES_HINT	0x52474c02	// the same extension, RadeonGL 0.7
+#endif
+extern cvar_t	gl_cull, r_cullworld;	// gl_rmain.c
 extern const char *gl_extensions;	// gl_vidamiga.c
 static int		worldvachecked, worldvabad;
 
@@ -2100,6 +2110,10 @@ static void R_FreeWorldVertexArray (void)
 
 	worldvastatic = 0;
 	free (worldva);
+	free (worldvafidx);
+	free (worldvamodelof);
+	worldvafidx = NULL;
+	worldvamodelof = NULL;
 	free (worldchunks);
 	free (worldvachunk);
 	free (worldvafirst);
@@ -2114,7 +2128,9 @@ static void R_FreeWorldVertexArray (void)
 
 static qboolean R_WorldVaSurface (msurface_t *s)
 {
-	return !(s->flags & (SURF_DRAWSKY|SURF_DRAWTURB)) && s->polys &&
+	// underwater surfaces stay out: while the view is warped they go another
+	// way (R_DrawSequentialPoly), and a whole chunk would draw them twice
+	return !(s->flags & (SURF_DRAWSKY|SURF_DRAWTURB|SURF_UNDERWATER)) && s->polys &&
 		s->polys->numverts >= 3 && s->polys->numverts <= WORLDBATCH_MAX_VERTS;
 }
 
@@ -2124,6 +2140,10 @@ static int R_WorldVaCompare (const void *a, const void *b)
 
 	s1 = worldvamodel->surfaces + *(const int *)a;
 	s2 = worldvamodel->surfaces + *(const int *)b;
+
+	// one model per chunk: a door's surfaces draw under the door's matrix
+	if (worldvamodelof[*(const int *)a] != worldvamodelof[*(const int *)b])
+		return worldvamodelof[*(const int *)a] - worldvamodelof[*(const int *)b];
 
 	if (s1->texinfo->texture != s2->texinfo->texture)
 		return (s1->texinfo->texture < s2->texinfo->texture) ? -1 : 1;
@@ -2197,6 +2217,38 @@ static void R_BuildWorldVertexArray (model_t *m)
 	if (!worldva || !worldchunks)
 		goto fail;
 
+	// each surface's submodel (submodel 0 is the world itself)
+	worldvamodelof = calloc (m->numsurfaces, sizeof(int));
+
+	if (!worldvamodelof)
+		goto fail;
+
+	for (i=1 ; i<m->numsubmodels ; i++)
+	{
+		int	f, f1;
+
+		f1 = m->submodels[i].firstface + m->submodels[i].numfaces;
+
+		for (f = m->submodels[i].firstface ; f < f1 && f < m->numsurfaces ; f++)
+			worldvamodelof[f] = i;
+	}
+
+	worldvastatic = gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays") &&
+		!COM_CheckParm ("-noworldvahint");
+
+	/* 2026-11-06: each chunk's full index list (every surface's fan), built
+	 * once, as the chunks fill (they arise one after another): whole chunks
+	 * are drawn from it, keyed by address in the library
+	 * (GL_RGL_STATIC_INDICES_HINT) -- no index building, hashing, packing or
+	 * upload per frame. The Radeon draws the chunk's hidden surfaces as well;
+	 * its back-face culling and depth test throw them away (the 68060 never
+	 * keeps the card busy). -noworldvawhole: the visible surfaces only. */
+	worldvawhole = worldvastatic && !COM_CheckParm ("-noworldvawhole");
+	worldvafidx = worldvawhole ? malloc (total * 3 * sizeof(unsigned short)) : NULL;
+
+	if (!worldvafidx)
+		worldvawhole = 0;
+
 	worldvamodel = m;	// R_WorldVaCompare reads it
 	qsort (order, n, sizeof(int), R_WorldVaCompare);
 
@@ -2208,8 +2260,14 @@ static void R_BuildWorldVertexArray (model_t *m)
 		s = m->surfaces + order[k];
 
 		if (!c || c->base != s->texinfo->texture || c->lmtex != s->lightmaptexturenum ||
+			c->model != worldvamodelof[order[k]] ||
 			c->numverts + s->polys->numverts > WORLDBATCH_MAX_VERTS)
 		{
+			unsigned short	*ip = worldvafidx;
+
+			if (c && worldvafidx)
+				ip = c->fidx + c->nfidx;	// right after the last chunk's list
+
 			c = &worldchunks[numworldchunks++];
 			c->verts = worldva + nv * VERTEXSIZE;
 			c->numverts = 0;
@@ -2218,6 +2276,21 @@ static void R_BuildWorldVertexArray (model_t *m)
 			c->texnum = 0;
 			c->chain = NULL;
 			c->next = 0;
+			c->model = worldvamodelof[order[k]];
+			c->fidx = ip;
+			c->nfidx = 0;
+		}
+
+		if (worldvafidx)
+		{
+			int	j;
+
+			for (j=2 ; j<s->polys->numverts ; j++)
+			{
+				c->fidx[c->nfidx++] = c->numverts;
+				c->fidx[c->nfidx++] = c->numverts + j - 1;
+				c->fidx[c->nfidx++] = c->numverts + j;
+			}
 		}
 
 		memcpy (c->verts + c->numverts * VERTEXSIZE, s->polys->verts[0],
@@ -2230,13 +2303,9 @@ static void R_BuildWorldVertexArray (model_t *m)
 
 	free (order);
 
-
-	worldvastatic = gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays") &&
-		!COM_CheckParm ("-noworldvahint");
-
 	if (worldvacheck)
-		Con_Printf ("world vertex array: %d surfaces, %d vertices, %d chunks%s\n", n, total, numworldchunks,
-			worldvastatic ? ", static arrays" : "");
+		Con_Printf ("world vertex array: %d surfaces, %d vertices, %d chunks%s%s\n", n, total, numworldchunks,
+			worldvastatic ? ", static arrays" : "", worldvawhole ? ", whole chunks" : "");
 
 	return;
 
@@ -2397,7 +2466,15 @@ static void R_FlushWorldBatches (void)
 	glEnableClientState (GL_VERTEX_ARRAY);
 
 	if (worldvastatic && worldchunkqueue)
+	{
 		glHint (GL_RGL_STATIC_ARRAYS_HINT, GL_NICEST);
+
+		if (worldvawhole)
+		{
+			glHint (GL_RGL_STATIC_INDICES_HINT, GL_NICEST);
+			glEnable (GL_CULL_FACE);	// the hidden back faces: the card's job now
+		}
+	}
 
 	// the static chunks: the span of the chunk from its first to its last
 	// visible polygon locked (the BSP order keeps visible neighbours together:
@@ -2414,6 +2491,35 @@ static void R_FlushWorldBatches (void)
 		c = &worldchunks[q-1];
 		lo = 0;
 		hi = c->numverts;
+
+		if (worldvawhole && c->fidx)
+		{
+			// the whole chunk, from its list built at load
+			if (worldvacheck)
+			{
+				for (s = c->chain ; s ; s = s->texturechain)
+				{
+					int	first = worldvafirst[s - worldvamodel->surfaces];
+
+					worldvachecked++;
+
+					if (memcmp (c->verts + first * VERTEXSIZE, s->polys->verts[0], s->polys->numverts * VERTEXSIZE * sizeof(float)))
+						worldvabad++;
+				}
+			}
+
+			c->chain = NULL;
+
+			R_WorldBatchState (c->texnum, c->lmtex);
+			R_WorldBatchPointers (c->verts);
+			glLockArrays (0, c->numverts);
+			glDrawElements (GL_TRIANGLES, c->nfidx, GL_UNSIGNED_SHORT, c->fidx);
+			glUnlockArrays ();
+
+			glDisable (GL_TEXTURE_2D);
+			glActiveTextureARB (GL_TEXTURE0_ARB);
+			continue;
+		}
 
 
 		if (!worldvafull && !worldvastatic)
@@ -2470,7 +2576,20 @@ static void R_FlushWorldBatches (void)
 	}
 
 	if (worldvastatic && worldchunkqueue)
+	{
+		if (worldvawhole)
+		{
+			glHint (GL_RGL_STATIC_INDICES_HINT, GL_DONT_CARE);
+
+			// back to R_RenderScene's culling for the world and brush models
+			if (gl_cull.value && (r_cullworld.value || r_novis.value))
+				glEnable (GL_CULL_FACE);
+			else
+				glDisable (GL_CULL_FACE);
+		}
+
 		glHint (GL_RGL_STATIC_ARRAYS_HINT, GL_DONT_CARE);
+	}
 
 	worldchunkqueue = 0;
 
