@@ -45,10 +45,16 @@ GetSysTime = -66
 
 	.globl	_AudioIntCode
 	.globl	AudioIntCode
+| 2026-11-06 (RadeonGL, the A4000D): no FPU in this interrupt. On a 68060
+| MMULib's 68060.library emulates FSIN, FCOS and the other missing 68881
+| instructions in software; this handler's FSAVE/fmul/fadd/FRESTORE in the
+| middle of such an emulation ended in the library's fatal alert BF00 0002
+| (MEASURED: its F-line handler called Alert(), this handler's
+| FMOVE.X (A7)+,FP0 on the stack). The time of the buffer start goes out as
+| integers -- seconds since FirstTime2, microseconds, then the count raised
+| -- and snd_paula.c's AudStartTime makes the double in the task.
 _AudioIntCode:
 AudioIntCode:
-	fsave	-(sp)
-	fmove.x	fp0,-(sp)
 	move.w	(0x01e,a0),d0
 	move.l	a1,a5
 	and.w	#0x780,d0
@@ -57,15 +63,12 @@ AudioIntCode:
 	lea	(TVstruct,pc),a0
 	jsr	(GetSysTime,a6)		| a0 is preserved!
 	move.l	(a5)+,a1		| ->FirstTime2
+	move.l	(a5),a5			| ->aud_start_time: secs, micro, seq
 	move.l	(a0)+,d0		| TV_SECS
-	fmove.l	(a0),fp0		| TV_MICRO
-	move.l	(a5),a5			| ->aud_start_time
-	fmul.d	#0f0.000001,fp0		| TV_MICRO/1000000
 	sub.l	(a1),d0			| TV_SECS - FirstTime2
-	fadd.l	d0,fp0
-	fmove.d	fp0,(a5)
-	fmove.x	(sp)+,fp0
-	frestore (sp)+
+	move.l	d0,(a5)+		| secs
+	move.l	(a0),(a5)+		| micro (TV_MICRO)
+	addq.l	#1,(a5)			| seq: a new time written
 	rts
 
 

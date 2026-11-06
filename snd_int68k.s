@@ -6,6 +6,17 @@
 ** written by Frank Wille <frank@phoenix.owl.de>
 ** modified by Matt Hey <matthey7@gmail.com>
 **
+** 2026-11-06 (RadeonGL, the A4000D): NOT used by the gcc build any more,
+** which assembles snd_int68k_gas.s -- an integer-only version. This one
+** uses the FPU in an interrupt: on a 68060 with MMULib's 68060.library an
+** audio interrupt in the middle of the library's software emulation of
+** FSIN/FCOS (the server's AngleVectors) ended in the fatal alert BF00 0002,
+** and FPSR, never saved here, came back changed (a branch in the task after
+** fcmp could go the wrong way: GLQuake's water chain closed into a ring).
+** Kept as it was for the PowerPC builds, whose snd_paula.c still reads a
+** double; a 68k vbcc build needs the integer version (snd_paula.c's
+** struct AudTime) as well.
+**
 
 	include	"devices/timer.i"
 	include "hardware/custom.i"

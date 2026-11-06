@@ -61,6 +61,25 @@ static UWORD OldINTENA = 0;
 static UWORD aud_intflag;
 static UBYTE saved_filter;
 
+#if !defined(__PPC__)
+/* 2026-11-06 (RadeonGL, the A4000D): the audio interrupt
+ * (snd_int68k_gas.s) keeps the time of the buffer start as integers --
+ * seconds since FirstTime2, microseconds, and a count it raises after each
+ * write -- and the task makes the double of it (AudStartTime). It used the
+ * FPU itself (FSAVE, fmul, fadd, FRESTORE): on a 68060 MMULib's
+ * 68060.library emulates FSIN/FCOS and the other missing 68881
+ * instructions in software, and an audio interrupt arriving in the middle
+ * of such an emulation (the server's AngleVectors, the client's view) ended
+ * in the library's fatal alert BF00 0002 -- MEASURED: the Alert() caller in
+ * its F-line handler, FMOVE.X (A7)+,FP0 of this handler on the stack. */
+struct AudTime
+{
+	volatile ULONG secs;
+	volatile ULONG micro;
+	volatile ULONG seq;
+};
+#endif
+
 //#pragma pack(push,2) // test Cowcat 2022
 static struct
 {
@@ -87,7 +106,11 @@ static struct
 	   never attempts this same hoist on the identical source. Assembly
 	   is untouched by this -- volatile is a C-compiler-only concept,
 	   the interrupt handler just writes raw memory either way. */
+	#if defined(__PPC__)
   	volatile double *aud_start_time;
+	#else
+  	struct AudTime *aud_start_time;
+	#endif
 
 	#if defined(__PPC__)
   	struct Library *MathIeeeDoubBasBase; /* offset 12 */
@@ -222,7 +245,7 @@ qboolean SNDDMA_InitPaula(void)
 
   	memset((UBYTE *)0x180000,0xa5,0x60000);
   	dmabuf = (UBYTE *)0x1a0000;
-  	IntData.aud_start_time = (double *)0x1c0000;
+  	IntData.aud_start_time = (void *)0x1c0000;
 
 	#else
 
@@ -237,7 +260,7 @@ qboolean SNDDMA_InitPaula(void)
   	}
 
   	#if !defined(__PPC__)
-  	if ( !(IntData.aud_start_time = Sys_Alloc(sizeof(double),MEMF_CHIP|MEMF_CLEAR)) ) 
+  	if ( !(IntData.aud_start_time = Sys_Alloc(sizeof(struct AudTime),MEMF_CHIP|MEMF_CLEAR)) ) 
   	#else
   	if ( !(IntData.aud_start_time = AllocMem(sizeof(double),MEMF_CHIP|MEMF_CLEAR)) )
   	#endif
@@ -358,11 +381,19 @@ qboolean SNDDMA_InitPaula(void)
 
   	OldInt = SetIntVector(channelnr+7,&AudioInt);
   	OldINTENA = custom->intenar;
+	#if defined(__PPC__)
   	*IntData.aud_start_time = 0;
+	#else
+  	IntData.aud_start_time->seq = 0;
+	#endif
   	aud_intflag = INTF_AUD0 << channelnr;
   	custom->intena = OldINTENA | INTF_SETCLR | INTF_INTEN | aud_intflag;
 
+	#if defined(__PPC__)
   	while ( !(*IntData.aud_start_time) );
+	#else
+  	while ( !IntData.aud_start_time->seq );
+	#endif
 
   	saved_filter = cia_a->ciapra & CIAF_LED;
   	cia_a->ciapra |= CIAF_LED;
@@ -372,6 +403,24 @@ qboolean SNDDMA_InitPaula(void)
   	return (true);
 }
 
+
+#if !defined(__PPC__)
+/* The interrupt's time of the buffer start, as a double, in the task: the
+ * three longwords again if an interrupt wrote them meanwhile. */
+static double AudStartTime(void)
+{
+	ULONG seq, secs, micro;
+
+	do
+	{
+		seq = IntData.aud_start_time->seq;
+		secs = IntData.aud_start_time->secs;
+		micro = IntData.aud_start_time->micro;
+	} while (IntData.aud_start_time->seq != seq);
+
+	return (double)(LONG)secs + (double)micro / 1000000.0;
+}
+#endif
 
 int SNDDMA_GetDMAPosPaula(void)
 {
@@ -396,7 +445,7 @@ int SNDDMA_GetDMAPosPaula(void)
 
 	#else
 
-  	pos = (int)((Sys_FloatTime()-*IntData.aud_start_time)*speed);
+  	pos = (int)((Sys_FloatTime()-AudStartTime())*speed);
 
 	#endif
 
