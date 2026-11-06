@@ -47,8 +47,8 @@ static struct Interrupt InputHandler;
 
 struct InputIntDat
 {
-	short MouseX;  // must be 2 bytes
-	short MouseY;  // must be 2 bytes
+	volatile short MouseX;  // must be 2 bytes; the input handler adds to them
+	volatile short MouseY;  // must be 2 bytes (volatile: see IN_MouseMove)
 	unsigned char LeftButtonDown;
 	unsigned char LeftButtonUp;
 	unsigned char RightButtonDown;
@@ -214,11 +214,20 @@ void IN_MouseMove (usercmd_t *cmd)
 	mousemove[0] = 0;
 	mousemove[1] = 0;
 #else
-	mx = (float)InputIntData->MouseX * m_speed.value; // + new mouse Cowcat
-	my = (float)InputIntData->MouseY * m_speed.value; // + 
+	{
+		/* 2026-11-06: the handler adds up every event's movement; take
+		 * what is there and subtract it: movement arriving meanwhile stays
+		 * for the next frame instead of being zeroed away (volatile, or
+		 * GCC folds X - X to a clear). */
+		short	dx = InputIntData->MouseX;
+		short	dy = InputIntData->MouseY;
 
-	InputIntData->MouseX = 0;
-	InputIntData->MouseY = 0;
+		InputIntData->MouseX -= dx;
+		InputIntData->MouseY -= dy;
+
+		mx = (float)dx * m_speed.value;
+		my = (float)dy * m_speed.value;
+	}
 #endif
 
 	if (m_filter.value)

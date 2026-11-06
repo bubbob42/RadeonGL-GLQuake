@@ -37,7 +37,13 @@ Lloop:
 	cmp.w	#0x6a,d0
 	beq.b	Lmmb
 Lmove:
-	move.l	(10,a0),(0,a1)	| ie_X,ie_Y -> iid_MouseX,iid_MouseY
+| 2026-11-06: ADD each event's movement. Copying kept only the last event's:
+| with several RAWMOUSE events a frame (a mouse reports faster than GLQuake
+| draws) the others were lost, and turning speed depended on the frame rate.
+	move.w	(10,a0),d0
+	add.w	d0,(0,a1)		| iid_MouseX += ie_X
+	move.w	(12,a0),d0
+	add.w	d0,(2,a1)		| iid_MouseY += ie_Y
 Lnext:
 	move.l	(0,a0),a0
 	tst.l	a0
