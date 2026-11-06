@@ -16,7 +16,7 @@ demo1 at 320 x 240 and 1280 x 720 on the A4000D, ABBA against the last build.
 | B2 | The five `TRAP #7` paths: real NULL dereferences fixed, the rest commented; `if(windowplay);` | S | `objdump | grep "trap #7"` explained to 0 or each justified |
 | B3 | The water-chain safety net: keep the reset and the bound, drop the `r_scene_phase` diagnostics | XS | builds, demo1 runs |
 | B4 | `snd_int68k.s` (vasm): the integer handler for 68k vbcc builds, the FPU one kept for PowerPC | S | optional; only if a vbcc build is wanted |
-| C1 | Two builds: `GLQuake060` (`-m68060`) and `GLQuake040` (`-m68040`); `tools/scan_emul.py` lists what a binary makes a CPU emulate | M | scan: no FINTRZ in the 040 build, nothing in the 060 build but FSINCOS/FMOVECR |
+| C1 | Two builds: `GLQuake060` (`-m68060`) and `GLQuake040` (`-m68040`); `tools/scan_emul.py` lists what a binary makes a CPU emulate. CPU-specific code only behind our own defines (Dennis, 2026-11-06): one header maps the compiler's (`__mc68060__`, `__mc68040__`; vbcc/SAS `-D`) to `Q_CPU_060` / `Q_CPU_040` / `Q_CPU_020`, the code tests only those | M | scan: no FINTRZ in the 040 build, nothing in the 060 build but FSINCOS/FMOVECR |
 | C2 | CPU check at start: each build refuses the wrong CPU with a message | S | tested in FS-UAE (040) and on the A4000D (060) |
 | D1 | `AngleVectors` (and the other trigonometry) without FSINCOS: table or polynomial | S | scan shows no FSINCOS; demo1 ABBA on the A4000D, not slower |
 | D2 | Profile: `QuakeProfile` of demo1 on the A4000D, the hot spots listed in `docs/profile.md` | S | the list is committed (measurement only) |
