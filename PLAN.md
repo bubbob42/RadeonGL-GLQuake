@@ -21,6 +21,7 @@ demo1 at 320 x 240 and 1280 x 720 on the A4000D, ABBA against the last build.
 | D1 | `AngleVectors` (and the other trigonometry) without FSINCOS: table or polynomial | S | scan shows no FSINCOS; demo1 ABBA on the A4000D, not slower |
 | D2 | Profile: `QuakeProfile` of demo1 on the A4000D, the hot spots listed in `docs/profile.md` | S | the list is committed (measurement only) |
 | D3+ | One hot spot from D2 per package (mixer, `mathlib68k`, world walk, alias models, ...) | M each | ABBA faster, demo1 output unchanged |
+| F1 | 32-bit screen: `-bpp` is clamped to 15..16 (`gl_vidamiga.c` 1002-1003), RadeonGL makes it R5G6B5; allow 32 (RadeonGL gives B8G8R8A8 for > 16) | XS | `-bpp 32` opens a 32-bit screen; demo1 ABBA 16 vs 32 bit on the A4000D |
 | E1 | Report to Steffen: the audio interrupt fix (a draft for the user to send) | S | draft written |
 
 Order: B1, B2, B3 (small, safe) -- C1, C2 -- D1, D2 -- A1 whenever there is a
