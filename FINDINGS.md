@@ -64,6 +64,22 @@ diagnostics report where a scene stopped (stdout with `-stdout`).
   RadeonGL 0.6 does not hide the pointer anyway (fixed in the RadeonGL
   source, not released).
 
+- **GCC's casts of computed values ignore C's truncation (68060/68020
+  builds).** bebbo's GCC 6.5, -m68060 or -m68020 with -m68881: `(int)x` of a
+  value from memory is `fintrz` + `fmove.l` (correct), but `(int)(r + 0.5)`
+  -- a value computed in a register -- is a bare `fmove.l`, which rounds by
+  the FPU's mode, and GLQuake sets round-to-nearest (`FE_TONEAREST`; only
+  for Permedia cards toward zero). Such casts come out up to one too high.
+  -m68040 switches the FPU to round-toward-zero around every conversion and
+  is correct. MEASURED 2026-11-06, FS-UAE null card, frame 400: the 68040
+  build differs from the 68060 build in 7789 pixels (up to 17 levels),
+  spread over every texture and the status bar -- where textures and the
+  palette are built. Upstream's 68020 build has the same code, so the
+  68060 picture is the one players know; the 68040 one is the C-correct
+  one. Not changed yet: options are FE_TOWARDZERO for all builds (then
+  every FP operation rounds toward zero) or explicit truncation where it
+  matters. Test: `int h(double r) { return (int)(r + 0.5); }`.
+
 ## Checked, not bugs
 
 - `RecursiveLightPointColor` indexes RGB light data (`*3`): only reached with
