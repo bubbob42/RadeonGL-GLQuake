@@ -33,4 +33,7 @@ here); its speed needs a tester with hardware.
 
 - Done: the audio interrupt fix (9929f3b), the safety net (0014834),
   FINDINGS.md.
-- Next: B1.
+- D-clip done: frustum clip flags in the world walk, about +1% (the
+  profile promised more: most nodes are decided high in the tree).
+- Next: the static world vertex array (D-world: about 3 ms, the biggest
+  lever in the profile), then B1.
