@@ -1,6 +1,8 @@
 # GLQuake as a minigl.library client (ABI 5), for testing RadeonGL.
 #
-# Run from the project root:  gmake glquake        (or gmake -f glquake/Makefile.radeongl)
+# Run from the RadeonGL project root:  gmake glquake  (it calls this file with
+# QSRC= this directory). GLQuake is not part of the RadeonGL repository: its
+# source lives beside it, in ../RadeonGL-GLQuake by default (GLQUAKE_DIR=).
 #
 # Source: glquake/ = Aminet MiniGL_Library_Quake1 (Dennis Boon, Steffen
 # Haeuser), built here as a SHARED-LIBRARY client against the minigl.library
@@ -23,16 +25,16 @@ CC       := $(CROSS)gcc
 AS       := $(CROSS)as
 
 SDK      := sdk/minigl-29.1
-QSRC     := glquake
+QSRC     ?= glquake
 QOBJ     := build/glquake
 QOUT     := dist/Quake
 QEXE     := $(QOUT)/GLQuake
 
-QUAKE_ID1 ?= /path/to/quake/ID1
+QUAKE_ID1 ?= /Volumes/storage/A4000T_OS314/Games/quake/ID1
 
 QDEFS    := -DLITFILES -DGLOWEFFECTS -DFASTBOPS -DGLQUAKE -DAMIGA -DAMIGAOS \
             -DNDEBUG -DGLM68KASM -DMGLV3D_NO_LOGGING -DMINIGL_SHARED_CLIENT
-QINC     := -I$(QSRC)/gcc_compat -I$(SDK)/minigl-shared-library/include \
+QINC     := -I$(QSRC)/gcc_compat -I$(SDK)/minigl-shared-library/include -Iglsmoke \
             -Isdk/ahi/include -Isdk/cgx/include \
             -include $(QSRC)/minigl_client_compat.h
 QOPT     := -O2 -fno-strict-aliasing -fno-builtin-cos -fno-builtin-sin \
@@ -74,7 +76,7 @@ $(QEXE): $(QOBJS) $(SDK)/lib/libminigl.a | $(QOUT)
 # Every C object also depends on the forced-in compat header and on this file
 # (flags); Quake's own headers are not tracked -- `gmake clean-glquake` after
 # editing one.
-QDEPS := $(QSRC)/minigl_client_compat.h glquake/Makefile.radeongl
+QDEPS := $(QSRC)/minigl_client_compat.h $(QSRC)/Makefile.radeongl
 
 $(QOBJ)/net_bsdsocket.o: $(QSRC)/net_bsdsocket.c $(QDEPS) | $(QOBJ)
 	$(CC) $(QCFLAGS) -D__NO_NET_API -c $< -o $@

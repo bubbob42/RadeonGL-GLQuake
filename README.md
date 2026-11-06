@@ -23,8 +23,8 @@ gmake glquake-data     # copies PAK0/PAK1 from QUAKE_ID1 to dist/Quake/id1/ (54 
 gmake clean-glquake
 ```
 
-`QUAKE_ID1` defaults to the registered data on the Quake data drawer,
-`/path/to/quake/ID1`. That pak0 has demo1-demo3 for
+`QUAKE_ID1` defaults to the registered data on the iprasa storage share,
+`/Volumes/storage/A4000T_OS314/Games/quake/ID1`. That pak0 has demo1-demo3 for
 `timedemo`. Override it on the command line for another copy.
 
 Toolchain: m68k-amigaos-gcc 6.5 (`~/amiga-arm`), libnix (`-noixemul`), GAS

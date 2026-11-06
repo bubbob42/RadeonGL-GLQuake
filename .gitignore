@@ -1,0 +1,11 @@
+# Quake game data is never committed (id Software)
+*.pak
+id1/
+# build products
+*.o
+*.a
+GLQuake
+GLQuake.sym
+# host clutter
+.DS_Store
+._*

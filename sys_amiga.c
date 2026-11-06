@@ -300,7 +300,7 @@ static jmp_buf sw_quit;
  * done) to its end; tools/profile.py reads the file with
  * --prog build/glquake/GLQuake.sym. Every 5 ms, at most 12,000 samples:
  * a minute of demo1 on the A4000D. */
-#include "../glsmoke/pcprof.h"
+#include "pcprof.h"            /* RadeonGL's glsmoke/ (Makefile.radeongl: -Iglsmoke) */
 
 static char rgl_prof_path[256];
 static ULONG rgl_prof_lib;
