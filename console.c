@@ -676,8 +676,7 @@ void Con_DrawNotify (void)
 		clearnotify = 0;
 		scr_copytop = 1;
 
-		for (x = 0 ; x < con_linewidth ; x++)
-			Draw_Character ( (x+1)<<3, v, text[x]);
+		Draw_StringN (8, v, text, con_linewidth);	// one draw a line (gl_draw.c)
 
 		v += 8;
 	}
@@ -765,8 +764,7 @@ void Con_DrawConsole (int lines, qboolean drawinput)
 
 		text = con_text + (j % con_totallines)*con_linewidth;
 
-		for (x=0 ; x<con_linewidth ; x++)
-			Draw_Character ( (x+1)<<3, y, text[x]);
+		Draw_StringN (8, y, text, con_linewidth);	// one draw a line (gl_draw.c)
 	}
 
 	// draw the input prompt, user text, and cursor if desired

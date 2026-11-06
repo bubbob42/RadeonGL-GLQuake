@@ -697,6 +697,103 @@ void Draw_Character (int x, int y, int num)
 
 /*
 ================
+Draw_StringN
+
+2026-11-06. len characters of str, the way Draw_Character draws each one
+(spaces skipped, the same quads in the same vertex order as its fan), but
+one locked array and one glDrawElements per line instead of a glBegin/glEnd
+with eight calls per character. Drawn before it returns, so nothing between
+two calls can change the state it draws with. Leaves the client state as
+R_FlushWorldBatches does (arrays off); the alias models set theirs every
+frame (qgl_EnableArray).
+================
+*/
+#define MAX_STRINGN	128
+
+static float		stringn_verts[MAX_STRINGN * 4 * 5];	// x y z s t
+static unsigned short	stringn_indexes[MAX_STRINGN * 6];
+
+void Draw_StringN (int x, int y, const char *str, int len)
+{
+	int		i, n, num;
+	float		*v;
+	float		fx, fy, fcol, frow;
+	const float	size = 0.0625;
+
+	static int	off = -1;
+
+	if (y <= -8)
+		return;	// totally off screen
+
+	if (off < 0)
+		off = COM_CheckParm ("-nostringn") ? 1 : 0;	// the old way, for comparisons
+
+	if (off)
+	{
+		for ( ; len > 0 ; len--, str++, x += 8)
+			Draw_Character (x, y, *str);
+
+		return;
+	}
+
+	if (!stringn_indexes[1])
+	{
+		for (i=0 ; i<MAX_STRINGN ; i++)
+		{
+			stringn_indexes[i*6+0] = i*4;
+			stringn_indexes[i*6+1] = i*4 + 1;
+			stringn_indexes[i*6+2] = i*4 + 2;
+			stringn_indexes[i*6+3] = i*4;
+			stringn_indexes[i*6+4] = i*4 + 2;
+			stringn_indexes[i*6+5] = i*4 + 3;
+		}
+	}
+
+	fy = (float)y;
+
+	while (len > 0)
+	{
+		n = 0;
+		v = stringn_verts;
+
+		for ( ; len > 0 && n < MAX_STRINGN ; len--, str++, x += 8)
+		{
+			num = *str & 255;
+
+			if (num == 32)
+				continue;	// space
+
+			frow = (float)(num>>4)*0.0625;
+			fcol = (float)(num&15)*0.0625;
+			fx = (float)x;
+
+			v[0] = fx;	v[1] = fy;	v[2] = 0;	v[3] = fcol;		v[4] = frow;
+			v[5] = fx+8.f;	v[6] = fy;	v[7] = 0;	v[8] = fcol + size;	v[9] = frow;
+			v[10] = fx+8.f;	v[11] = fy+8.f;	v[12] = 0;	v[13] = fcol + size;	v[14] = frow + size;
+			v[15] = fx;	v[16] = fy+8.f;	v[17] = 0;	v[18] = fcol;		v[19] = frow + size;
+			v += 20;
+			n++;
+		}
+
+		if (!n)
+			continue;
+
+		GL_Bind (char_texture);
+		glDisableClientState (GL_COLOR_ARRAY);
+		glVertexPointer (3, GL_FLOAT, 5 * sizeof(float), stringn_verts);
+		glTexCoordPointer (2, GL_FLOAT, 5 * sizeof(float), stringn_verts + 3);
+		glEnableClientState (GL_TEXTURE_COORD_ARRAY);
+		glEnableClientState (GL_VERTEX_ARRAY);
+		glLockArrays (0, n * 4);
+		glDrawElements (GL_TRIANGLES, n * 6, GL_UNSIGNED_SHORT, stringn_indexes);
+		glUnlockArrays ();
+		glDisableClientState (GL_TEXTURE_COORD_ARRAY);
+		glDisableClientState (GL_VERTEX_ARRAY);
+	}
+}
+
+/*
+================
 Draw_String
 ================
 */
@@ -704,7 +801,9 @@ Draw_String
 void Draw_String (int x, int y, char *str)
 {
 
-#if 0 //Surgeon: very inefficient switching blendmodes and binding same texture multiple times
+#if 1	// one array draw (Draw_StringN), 2026-11-06
+	Draw_StringN (x, y, str, strlen (str));
+#elif 0 //Surgeon: very inefficient switching blendmodes and binding same texture multiple times
 
 	while (*str)
 	{
