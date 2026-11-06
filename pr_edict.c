@@ -376,7 +376,11 @@ static char *PR_ValueString (etype_t type, eval_t *val)
 
 		case ev_field:
 			def = ED_FieldAtOfs ( val->_int );
-			sprintf (line, ".%s", pr_strings + def->s_name);
+
+			if (def)	// NULL: no field at that offset (2026-11-06; it read through NULL)
+				sprintf (line, ".%s", pr_strings + def->s_name);
+			else
+				sprintf (line, ".<field %i?>", val->_int);
 			break;
 
 		case ev_void:
@@ -436,7 +440,11 @@ static char *PR_UglyValueString (etype_t type, eval_t *val)
 
 		case ev_field:
 			def = ED_FieldAtOfs ( val->_int );
-			sprintf (line, "%s", pr_strings + def->s_name);
+
+			if (def)	// NULL: no field at that offset (2026-11-06; a savegame write crashed on it)
+				sprintf (line, "%s", pr_strings + def->s_name);
+			else
+				sprintf (line, "<field %i?>", val->_int);
 			break;
 
 		case ev_void:

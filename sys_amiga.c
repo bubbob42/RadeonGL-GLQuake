@@ -326,6 +326,12 @@ void RGL_ProfStop(void)
 	rgl_prof_lib = 0;
 }
 
+#ifdef __GNUC__
+/* never returns: longjmp to the big stack's base, or exit (2026-11-06;
+ * Sys_Error, which ends in it, is noreturn in sys.h) */
+static void cleanup(int rc) __attribute__((noreturn));
+#endif
+
 static void cleanup(int rc)
 {
 	int i;

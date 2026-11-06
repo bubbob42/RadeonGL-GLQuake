@@ -83,7 +83,13 @@ void Sys_MakeCodeWriteable (unsigned long startaddr, unsigned long length);
 //
 void Sys_DebugLog(char *file, char *fmt, ...);
 
+#ifdef __GNUC__
+/* never returns (2026-11-06): GCC then no longer sees a path through the NULL
+ * that W_GetLumpinfo "returns" after it, and puts no TRAP #7 there */
+void Sys_Error (char *error, ...) __attribute__((noreturn));
+#else
 void Sys_Error (char *error, ...);
+#endif
 // an error will cause the entire program to exit
 
 void Sys_Printf (char *fmt, ...);

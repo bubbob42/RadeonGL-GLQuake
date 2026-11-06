@@ -46,10 +46,19 @@ diagnostics report where a scene stopped (stdout with `-stdout`).
   USB mouse reports at up to 125 Hz, GLQuake runs at 20-35 fps) only the last
   one counts: sensitivity depends on the frame rate. Fix: add up the deltas
   in the handler.
-- **Five paths where GCC proved a NULL dereference** and put `TRAP #7`
-  (a guru 80000027 if ever taken): `ED_FindFunction` (2),
-  `GL_BeginRendering`, `ChangeVideoSync_f`, `W_GetLumpName`. Find them with
-  `objdump -d GLQuake.sym | grep "trap #7"`.
+- **`TRAP #7` (fixed 2026-11-06, B2).** The first count (five) was partly
+  wrong: `GL_BeginRendering` and `ChangeVideoSync_f` hold no trap at all --
+  text after their code ("CHANGED": "NG" is 0x4E47, the opcode of TRAP #7)
+  decoded as instructions; and the two filed under `ED_FindFunction` were in
+  `PR_ValueString` and `PR_UglyValueString` (statics land on the global
+  before them in GLQuake.sym; the object file names them). Real: those two
+  read `ED_FieldAtOfs()`'s NULL for a field value with no field at its
+  offset (id's code; the savegame writer would crash on it) -- now they
+  print `<field N?>`. `W_GetLumpName`: GCC saw the NULL that `W_GetLumpinfo`
+  "returns" after `Sys_Error`; `Sys_Error` and `cleanup` are now declared
+  noreturn (GCC only), and no trap is left. Check with
+  `objdump -d -m m68k:68060 build/glquake/<file>.o` (the object file's own
+  symbols), not the linked binary.
 - **`if(windowplay);`** in `gl_vidamiga.c` (after `ModifyIDCMP`): the stray
   semicolon makes `mglSetPointer()` unconditional. Harmless in full screen;
   RadeonGL 0.6 does not hide the pointer anyway (fixed in the RadeonGL
