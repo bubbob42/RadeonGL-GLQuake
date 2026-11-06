@@ -36,5 +36,8 @@ here); its speed needs a tester with hardware.
   FINDINGS.md.
 - D-clip done: frustum clip flags in the world walk, about +1% (the
   profile promised more: most nodes are decided high in the tree).
-- Next: the static world vertex array (D-world: about 3 ms, the biggest
-  lever in the profile), then B1.
+- D-world done: the static world vertex array with RadeonGL's
+  GL_RGL_static_arrays hint, +7% (26.2 vs 24.45 fps at 320 x 240); needs
+  RadeonGL 0.7 (the hint is in its working tree, not released). Without the
+  hint the array loses (the library hashes it): off by default there.
+- Next: B1.
