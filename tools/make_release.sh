@@ -1,7 +1,8 @@
 #!/bin/sh
 # make_release.sh -- the binary release of GLQuake for R200 68k (the RadeonGL
 # edition): release/GLQuakeR200.lha, one drawer GLQuakeR200 with the
-# Installer, ReadMe, COPYING, Files/ (both CPU builds, PlayQuake) and the
+# Installer, ReadMe, COPYING, Files/ (both CPU builds, QuakeLauncher,
+# PlayQuake) and the
 # complete source (GPL).
 #   tools/make_release.sh           the archive (the work tree must be committed)
 #   tools/make_release.sh --stage   only stages the drawer as RadeonGL's
@@ -29,9 +30,9 @@ D=$STAGE/GLQuakeR200
 F=$D/Files                              # no icon: out of sight, the Installer's source
 rm -rf "$STAGE"
 mkdir -p "$D/Source" "$F"
-cp "$R/dist/Quake/GLQuake" "$R/dist/Quake/GLQuake040" "$F/"
-cp package/PlayQuake package/PlayQuake.info "$F/"
-chmod 755 "$F/GLQuake" "$F/GLQuake040" "$F/PlayQuake"   # LhA takes the host mode
+cp "$R/dist/Quake/GLQuake" "$R/dist/Quake/GLQuake040" "$R/dist/Quake/QuakeLauncher" "$F/"
+cp package/PlayQuake package/PlayQuake.info package/QuakeLauncher.info "$F/"
+chmod 755 "$F/GLQuake" "$F/GLQuake040" "$F/QuakeLauncher" "$F/PlayQuake"   # LhA takes the host mode
 cp package/Install package/Install.info "$D/"
 cp README.md "$D/ReadMe"
 cp package/ReadMe.info "$D/ReadMe.info"

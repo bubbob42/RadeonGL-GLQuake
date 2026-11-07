@@ -3,10 +3,11 @@
 ; Installs GLQuake (the RadeonGL edition of GLQuake for minigl.library)
 ; into the drawer that holds Quake's data drawer, id1:
 ;
-;   Files/GLQuake         the 68060 build
-;   Files/GLQuake040      the 68040 build (also runs on a 68060)
-;   Files/PlayQuake(.info) the start script: the build for this CPU
-;   ReadMe(.info)          -> GLQuakeR200.ReadMe(.info)
+;   Files/GLQuake            the 68060 build   } only the one for this
+;   Files/GLQuake040         the 68040 build   } processor is installed
+;   Files/QuakeLauncher(.info) the start window: options, then the game
+;   Files/PlayQuake(.info)   the start script, for a Shell
+;   ReadMe(.info)            -> GLQuakeR200.ReadMe(.info)
 ;
 ; Written for the V44 Installer of AmigaOS 3.2, like RadeonGL's (whose
 ; measured traps apply here too). It runs from the package drawer: every
@@ -38,8 +39,8 @@
 
 ; --- the CPU and its FPU ---------------------------------------------------
 ; Two builds: GLQuake (68060) and GLQuake040 (68040, also fine on a 68060);
-; each refuses a CPU it is not made for. Both are installed; PlayQuake
-; starts the one for this CPU.
+; each refuses a CPU it is not made for. Only the one for this processor is
+; installed (the user, 2026-11-07); QuakeLauncher shows it and starts it.
 (if (database "fpu" "NOFPU")
     (abort "GLQuake needs a CPU with a floating-point unit (FPU).\n\n"
            "This system has none. GLQuake runs on a 68040 or 68060 with FPU.")
@@ -123,13 +124,16 @@
 
 ; --- the files -------------------------------------------------------------
 (copyfiles
-    (prompt "Copying GLQuake (68060), GLQuake040 (68040) and PlayQuake.")
-    (help "PlayQuake starts the build for your processor. Both builds are "
-          "copied, so a later processor upgrade needs no reinstallation.\n\n"
+    (prompt ("Copying %s (the build for this processor), QuakeLauncher and PlayQuake." #build))
+    (help "GLQuake is for a 68060, GLQuake040 for a 68040; only the one for "
+          "your processor is copied. After a processor upgrade, install "
+          "again.\n\n"
+          "QuakeLauncher is the start window: the game's options, then the "
+          "game. PlayQuake starts it from a Shell.\n\n"
           @copyfiles-help)
     (source "Files")
     (dest #dest)
-    (all)
+    (choices #build "QuakeLauncher" "PlayQuake")
     (infos)
     (optional "force")
 )
@@ -147,10 +151,12 @@
 (complete 100)
 (set #closing
     (cat ("GLQuake is in\n%s\n\n" #dest)
-         "Double-click PlayQuake there to play: it starts the build for your "
-         ("processor (here: %s).\n\n" #build)
-         "For the fastest picture on an R200 Radeon, install RadeonGL 0.7 "
-         "or later (driver/video/RadeonGL)."))
+         "Double-click QuakeLauncher there to play: it starts "
+         ("%s, the build for this processor, with the options " #build)
+         "of its window. From a Shell, PlayQuake does the same.\n\n"
+         "For the fastest picture on an R200 Radeon, install RadeonGL 0.8 "
+         "or later (driver/video/RadeonGL): vertical sync and every screen "
+         "mode of the card."))
 (if (= #haveid1 0)
     (set #closing
         (cat #closing

@@ -1858,13 +1858,12 @@ void R_DrawWaterSurfaces (void)
 			{
 				if (++steps > cl.worldmodel->numsurfaces)
 				{
-					extern int r_scene_prev;
 					static int ring_reports;
 
 					if (ring_reports < 50)
 					{
-						Sys_Printf ("R_DrawWaterSurfaces: waterchain ring after %d surfaces (last scene phase %d); cut\n",
-							cl.worldmodel->numsurfaces, r_scene_prev);
+						Sys_Printf ("R_DrawWaterSurfaces: waterchain ring after %d surfaces; cut\n",
+							cl.worldmodel->numsurfaces);
 						ring_reports++;
 					}
 					break;
@@ -3357,20 +3356,19 @@ void R_DrawWorld (void)
 	memset (lightmap_polys, 0, sizeof(lightmap_polys));
 
 	/* 2026-11-06: the water and sky chains are empty when a walk starts --
-	 * unless the last scene stopped before its water pass (gl_rmain.c,
-	 * r_scene_phase). Linked again they would close into a ring and
+	 * unless the last scene stopped before its water pass (gl_rmain.c
+	 * R_RenderScene). Linked again they would close into a ring and
 	 * R_DrawWaterSurfaces would never end (MEASURED, the A4000D). Reported
 	 * (stdout, -stdout) and emptied. */
 	{
-		extern int r_scene_prev;
 		static int stale_reports;
 
 		if (waterchain || skychain)
 		{
 			if (stale_reports < 50)
 			{
-				Sys_Printf ("R_DrawWorld: stale%s%s chain, the last scene stopped at phase %d; emptied\n",
-					waterchain ? " water" : "", skychain ? " sky" : "", r_scene_prev);
+				Sys_Printf ("R_DrawWorld: stale%s%s chain, the last scene stopped early; emptied\n",
+					waterchain ? " water" : "", skychain ? " sky" : "");
 				stale_reports++;
 			}
 			waterchain = NULL;

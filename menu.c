@@ -2076,7 +2076,7 @@ void M_Video_Draw (void)
 		M_DrawCharacter (24 - 12, y, 12 + ((int)(realtime * 4) & 1));
 
 	y += 16;
-	sprintf (v, "Running: %dx%d, 16 bit", w, h);
+	sprintf (v, "Running: %dx%d, %d bit", w, h, VID_GetBpp ());
 	M_PrintWhite (48, y, v);
 
 	// 2026-11-07: a refused switch says why, in place of the help

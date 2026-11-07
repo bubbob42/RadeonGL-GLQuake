@@ -70,7 +70,17 @@ QOBJS := $(addprefix $(QOBJ)/,$(addsuffix .o,$(QFILES) $(QEXTRA) $(QASFILES) mat
 
 .PHONY: glquake glquake-data clean-glquake
 
-glquake: $(QEXE)
+# QuakeLauncher (launcher/quakelauncher.c, 2026-11-07): the start window that
+# picks the build for the processor. 68000 code, C89 (SAS/C-compatible), the
+# ReAction classes of AmigaOS 3.2; one binary for every QCPU build. (Defined
+# before the rule that names it: prerequisites expand when read.)
+QLAUNCHER := $(QOUT)/QuakeLauncher
+
+glquake: $(QEXE) $(QLAUNCHER)
+
+$(QLAUNCHER): $(QSRC)/launcher/quakelauncher.c $(QSRC)/rglq_version.h $(QSRC)/Makefile.radeongl | $(QOUT)
+	$(CC) -noixemul -m68000 -Os -Wall -Wextra -Wno-pointer-sign -Werror=implicit-function-declaration \
+	    -I$(QSRC) -s -o $@ $< -lamiga
 
 # Linked twice: stripped by the linker (-s), and with its symbols as
 # GLQuake.sym beside the objects for tools/profile.py --prog. Not strip -o

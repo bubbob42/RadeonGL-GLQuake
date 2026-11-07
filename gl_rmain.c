@@ -4014,21 +4014,15 @@ r_refdef must be set before the first call
 ================
 */
 
-/* 2026-11-06 (RadeonGL play-crash hunt, the A4000D): how far the last
- * R_RenderScene got; 7 = through the water pass. R_DrawWorld reports a scene
- * that stopped between its world walk and the water pass, because that
- * walk's water chain then stays linked and the next walk links the same
- * surfaces onto it again: a ring. MEASURED: waterchain S1->S3->S2->S1,
- * R_DrawWaterSurfaces drawing three water surfaces for ever, the picture
- * frozen, no frame finished. */
-int r_scene_phase = 7;
-int r_scene_prev = 7;
-
+/* 2026-11-06 (RadeonGL play-crash hunt, the A4000D): a scene that stopped
+ * between its world walk and the water pass left the walk's water chain
+ * linked, and the next walk linked the same surfaces onto it again: a ring
+ * (MEASURED: waterchain S1->S3->S2->S1, R_DrawWaterSurfaces drawing three
+ * water surfaces for ever). R_DrawWorld empties stale chains and the water
+ * loop is bounded (gl_rsurf.c); the phase diagnostics that found it are gone
+ * (2026-11-07, PLAN B3). */
 void R_RenderScene (void)
 {
-	r_scene_prev = r_scene_phase;
-	r_scene_phase = 0;
-
 	R_SetupFrame ();
 
 	R_SetFrustum (r_fovx, r_fovy);
@@ -4062,7 +4056,6 @@ void R_RenderScene (void)
 	//SortEntitiesByTransparency(); //
 
 	R_DrawWorld ();			// adds static entities to the list
-	r_scene_phase = 1;
 
 	/* 2026-09-14: brush models after the world, stock GLQuake's order. Drawn
 	 * first, as this port did, they ran before the world walk added the static
@@ -4070,10 +4063,8 @@ void R_RenderScene (void)
 	 * never drawn. */
 	glColor4f(1,1,1,1);
 	R_DrawEntitiesOnList (1);	// brushmodels
-	r_scene_phase = 2;
 
 	S_ExtraUpdate ();		// don't let sound get messed up if going slow
-	r_scene_phase = 3;
  
 	//if(gl_cull.value)
 		//glEnable(GL_CULL_FACE); // GL_CULL_FACE is disabled/enabled when DrawEntitiesOnList(2) - Cowcat
@@ -4081,7 +4072,6 @@ void R_RenderScene (void)
 	//smoothmodels = (gl_smoothmodels.value != 0); // ala SuRgEoN - Cowcat 2019
 
 	R_DrawEntitiesOnList (2);
-	r_scene_phase = 4;
 
 	glShadeModel(GL_SMOOTH);	//SuRgEoN
 
@@ -4090,9 +4080,7 @@ void R_RenderScene (void)
 		R_RenderGlows ();
 	#endif
 
-	r_scene_phase = 5;
 	R_RenderDlights ();
-	r_scene_phase = 6;
 
 	glDisable(GL_CULL_FACE);	//Surgeon: particle cullung is a waste of time
 
@@ -4110,7 +4098,6 @@ void R_RenderScene (void)
 	#endif
 
 	R_DrawWaterSurfaces (); // was in RenderView (needed here for stereoview & mirrors) - Cowcat
-	r_scene_phase = 7;
 }
 
 /*

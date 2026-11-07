@@ -69,6 +69,15 @@ RadeonGL with the static-arrays hint, check off, ABBA.
   U4 the Sound page (live restart), U5/U8 in RadeonGL (mode list, context
   from a mode, live resize), U6 the Video Modes page (live switch), U7 the
   2D scaled at high resolutions; and the lowlevel.library mouse-port fix.
+- 2026-11-07 evening, release 1.2: B3 done (the r_scene_phase diagnostics
+  gone, the water-chain reset and bound kept); F1 done (`-bpp 32`: demo1 at
+  640 x 480 32.0 fps against 32.3 in 16 bit, picture right); QuakeLauncher
+  (launcher/quakelauncher.c: the start window, ReAction, GCC and SAS/C,
+  tested on the A4000D -- options in the settings file, the 040-only case
+  -- and on the A1200's 68030); the Installer installs only the build for
+  the processor (FS-UAE GLQInstallRun on the 040 passes). 1.2 on RadeonGL
+  0.8, vsync off: demo1 33.5 / 32.5 / 32.9, demo2 30.6 / 26.0, demo3
+  28.9 / 27.5 fps.
 - 2026-11-07 afternoon, from the user's test of the Build in Work: the
   "wrong columns" at 800 x 600 were RadeonGL's depth buffer (the R200 tiles
   Z16 in 64-pixel tiles; a pitch of 800 shared two tile columns' depth) --

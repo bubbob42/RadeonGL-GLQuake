@@ -828,6 +828,20 @@ void ChangeVideoSync_f (void)
  * (RadeonGL 0.7 and up) holds each present until the beam has left the
  * screen: no tearing when turning, at the price of waiting for the beam.
  * Saved as vid_vsync; vid_buffers 2 turns it on as well (MiniGL's custom). */
+/* 2026-11-07: the depth of the screen the library opened (it falls back to
+ * 16 bits where a size has no 32-bit mode), for the Video Modes page */
+int VID_GetBpp (void)
+{
+	struct Window	*w;
+
+	w = mglGetInputWindowHandle ();
+
+	if (w && w->WScreen)
+		return (GetBitMapAttr (w->WScreen->RastPort.BitMap, BMA_DEPTH) > 16) ? 32 : 16;
+
+	return bpp;
+}
+
 qboolean VID_GetVSync (void)
 {
 	return gl_videosync;
@@ -1208,8 +1222,12 @@ void VID_Init(unsigned char *palette)
 		scr_height = (vid_height.value >= 200) ? (int)vid_height.value : scr_width * 3 / 4;
 	}
 
+	/* 2026-11-07 (PLAN F1): 32 bits as well -- RadeonGL draws on a B8G8R8A8
+	 * screen for anything above 16 (24 means 32) */
 	if (vid_bpp.value == 15 || vid_bpp.value == 16)
 		bpp = (int)vid_bpp.value;
+	else if (vid_bpp.value == 24 || vid_bpp.value == 32)
+		bpp = 32;
   
 	if ((i = COM_CheckParm("-width")) != 0)
 	{
@@ -1229,7 +1247,7 @@ void VID_Init(unsigned char *palette)
 		bpp = Q_atoi(com_argv[i+1]);
 
 		if (bpp < 15) bpp = 15;
-		if (bpp > 16) bpp = 16;
+		if (bpp > 16) bpp = 32;		// 2026-11-07: 24 and 32 give a 32-bit screen
 	}  
 
 	//guardband clipping
