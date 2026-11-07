@@ -172,6 +172,8 @@ decisions. Every change was measured and tested on real hardware.
   improvements this source carries.
 - **Dennis Boon and Steffen Häuser:** GLQuake for `minigl.library`, and
   `minigl.library` 29.1 itself.
+- **Martin "Mason" Merz:** the Install icon, AmigaOS 3.2's installer icon,
+  used with his permission.
 - **Marcus Gerards:** this RadeonGL edition.
 
 ## Licence
