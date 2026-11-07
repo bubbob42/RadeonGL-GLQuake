@@ -306,6 +306,7 @@ extern qboolean R_CullBox (vec3_t mins, vec3_t maxs);
 // gl_rlight.c
 //
 extern void R_MarkLights (dlight_t *light, int bit, mnode_t *node);
+extern void R_MarkLightsIn (dlight_t *light, int bit, struct model_s *model, mnode_t *node);	// RadeonGL
 extern void R_AnimateLight (void);
 extern void R_RenderDlights (void);
 extern int R_LightPoint (vec3_t p);

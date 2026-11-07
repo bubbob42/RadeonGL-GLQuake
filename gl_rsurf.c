@@ -2790,7 +2790,7 @@ void R_DrawBrushModel (entity_t *e)
 				continue;
 
 			//R_MarkLights (&cl_dlights[k], 1<<k, clmodel->nodes + clmodel->hulls[0].firstclipnode);
-			R_MarkLights (&cl_dlights[k], k, clmodel->nodes + clmodel->hulls[0].firstclipnode); // new 2019 - Cowcat
+			R_MarkLightsIn (&cl_dlights[k], k, clmodel, clmodel->nodes + clmodel->hulls[0].firstclipnode); // new 2019 - Cowcat; RadeonGL: compact
 		}
 	}
 

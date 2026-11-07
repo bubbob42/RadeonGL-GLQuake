@@ -83,10 +83,12 @@ RadeonGL with the static-arrays hint, check off, ABBA.
   benchmark (`-playbench`, `playbench.txt`; repeatable, entity checksum),
   three exact server caches (+8.9%), the compact hull walk (+1.8%), the
   render tree's compact nodes (+2.4%), the world walk's dense visframes
-  (+0.9% play, +0.6% demo1), the QuakeC interpreter (+1.0%). Play
-  benchmark on the A4000D 42.6 -> 48.5 fps with the four switches
-  (`-noplaycache -nohullnodes -noleafnodes -nosurfvis`), every checksum
-  and play picture unchanged; the 68040 build the same in FS-UAE.
+  (+0.9% play, +0.6% demo1), the QuakeC interpreter (+1.0%); then the
+  light walks on the compact tree (demo1 +1.0%) and entities out of sight
+  skipped sooner (+0.7%). Play benchmark on the A4000D 42.6 -> 49.0 fps
+  with the five switches (`-noplaycache -nohullnodes -noleafnodes
+  -nosurfvis -nopvsfirst`), demo1 33.15 -> 33.3; every checksum and play
+  and demo picture unchanged; the 68040 build the same in FS-UAE.
 - Speed, next: the library's state validation and flush (a third of
   play); the world walk's node reads; the traces themselves (id's
   algorithm: crossing tests).

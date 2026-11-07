@@ -725,6 +725,137 @@ loc0:
 	}
 }
 
+/*
+=============
+R_MarkLightsC / R_MarkLightsIn (RadeonGL, 2026-11-07)
+
+R_MarkLights on the model's compact render tree (mleafnode_t, gl_model.h):
+the plane's dist and type beside the children, the mnode_t read only where
+the light reaches a node's surfaces. The same tests, the same surfaces
+(taken from cl.worldmodel as R_MarkLights takes them). R_MarkLightsIn
+chooses: the compact walk when node is in model's tree (-noleafnodes: id's).
+=============
+*/
+static void R_MarkLightsC (dlight_t *light, int num, model_t *model, int n)
+{
+	mleafnode_t	*ln;
+	mnode_t		*node;
+	float		dist, l, maxdist;
+	msurface_t	*surf;
+	int		i, j, s, t, tp;
+	vec3_t		impact;
+
+loc0:
+	if (n < 0)
+		return;
+
+	ln = model->leafnodes + n;
+	tp = ln->typeplane;
+
+	if ((tp & 7) < 3)
+		dist = light->origin[tp & 7] - ln->dist;
+
+	else
+		dist = DotProduct (light->origin, model->planes[tp >> 4].normal) - ln->dist;
+
+	if (dist > light->radius)
+	{
+		n = ln->children[0];
+		goto loc0;
+	}
+
+	if (dist < -light->radius)
+	{
+		n = ln->children[1];
+		goto loc0;
+	}
+
+	node = model->nodes + n;
+
+	maxdist = light->radius * light->radius;
+ 
+	// mark the polygons
+	surf = cl.worldmodel->surfaces + node->firstsurface;
+
+	for (i=0 ; i<node->numsurfaces ; i++, surf++)
+	{ 
+		// LordHavoc: MAJOR dynamic light speedup here, eliminates marking of surfaces that are too far away from light,
+		// thus preventing unnecessary renders and uploads
+
+		for (j=0 ; j<3 ; j++) 
+			impact[j] = light->origin[j] - surf->plane->normal[j] * dist; 
+ 
+		// clamp center of light to corner and check brightness
+
+		l = DotProduct (impact, surf->texinfo->vecs[0]) + surf->texinfo->vecs[0][3] - surf->texturemins[0]; 
+		s = l + 0.5;
+
+		if (s < 0) s = 0;
+
+		else if (s > surf->extents[0]) s = surf->extents[0];
+ 
+		s = l - s;
+
+		l = DotProduct (impact, surf->texinfo->vecs[1]) + surf->texinfo->vecs[1][3] - surf->texturemins[1]; 
+		t = l + 0.5;
+
+		if (t < 0) t = 0;
+
+		else if (t > surf->extents[1]) t = surf->extents[1];
+
+		t = l - t;
+
+		// compare to minimum light 
+		if ( (s*s + t*t + dist*dist) < maxdist) 
+		{ 
+			if ( surf->dlightframe != r_dlightframecount ) // not dynamic until now 
+			{ 
+				/* 2026-11-06: every word. Only the light's own word was
+				 * reset, so with MAX_DLIGHTS 64 the other word kept the bits
+				 * of earlier frames, and R_AddDynamicLights added those
+				 * lights to surfaces they no longer reach through the BSP
+				 * (through walls, or long dead: wasted work either way). */
+				memset (surf->dlightbits, 0, sizeof(surf->dlightbits));
+				surf->dlightframe = r_dlightframecount;
+			}
+
+			surf->dlightbits[num >> 5] |= 1U << (num & 31); // extended lights - Cowcat 2019
+		}
+	}
+
+	if (ln->children[0] >= 0)
+	{
+		if (ln->children[1] >= 0)
+		{
+			R_MarkLightsC (light, num, model, ln->children[0]);
+			n = ln->children[1];
+			goto loc0;
+		}
+
+		else
+		{
+			n = ln->children[0];
+			goto loc0;
+		}
+	}
+
+	else if (ln->children[1] >= 0)
+	{
+		n = ln->children[1];
+		goto loc0;
+	}
+}
+
+void R_MarkLightsIn (dlight_t *light, int num, model_t *model, mnode_t *node)
+{
+	if (model->leafnodes && model->leafnodes_root == model->nodes
+		&& node >= model->nodes && node < model->nodes + model->numnodes)
+		R_MarkLightsC (light, num, model, node - model->nodes);
+
+	else
+		R_MarkLights (light, num, node);
+}
+
 
 
 /*
@@ -752,7 +883,7 @@ void R_PushDlights (void)
 			continue;
 
 		//R_MarkLights ( l, 1<<i , cl.worldmodel->nodes );
-		R_MarkLights ( l, i, cl.worldmodel->nodes ); // new 2019 - Cowcat
+		R_MarkLightsIn ( l, i, cl.worldmodel, cl.worldmodel->nodes ); // new 2019 - Cowcat; RadeonGL: compact
 	}
 }
 
@@ -775,7 +906,7 @@ void R_PushDlights2 (struct mnode_s *headnode)
 			continue;
 
 		//R_MarkLights ( l, 1<<i , cl.worldmodel->nodes );
-		R_MarkLights ( l, i, cl.worldmodel->nodes ); // new 2019 - Cowcat
+		R_MarkLightsIn ( l, i, cl.worldmodel, cl.worldmodel->nodes ); // new 2019 - Cowcat; RadeonGL: compact
 	}
 }
 
@@ -973,6 +1104,198 @@ loc0:
 }
 
 /*
+=============
+RecursiveLightPointC (RadeonGL, 2026-11-07)
+
+RecursiveLightPoint on the model's compact render tree (mleafnode_t,
+gl_model.h): the same tests and the same arithmetic, the mnode_t read only
+for the surfaces of the node the segment crosses. R_LightPoint uses it when
+the world has the tree (-noleafnodes: id's).
+=============
+*/
+static int RecursiveLightPointC (model_t *model, int n, vec3_t start, vec3_t end)
+{
+	mleafnode_t	*ln;
+	mnode_t		*node;
+	int		tp;
+	int		r, s, t, ds, dt, i, side, maps;
+	float		front, back, frac;
+	//mplane_t	*plane; // not needed - Cowcat
+	vec3_t		mid;
+	msurface_t	*surf;
+	mtexinfo_t	*tex;
+	byte		*lightmap;
+	unsigned	scale;
+
+loc0:
+	if (n < 0)
+	{
+		return -1;    // didn't hit anything
+	}
+
+	ln = model->leafnodes + n;
+	tp = ln->typeplane;
+  
+// calculate mid point
+
+#if 0
+	// FIXME: optimize for axial
+	plane = node->plane;
+	front = DotProduct (start, plane->normal) - plane->dist;
+	back = DotProduct (end, plane->normal) - plane->dist;
+	side = front < 0;
+#else
+
+	#if 1
+
+	if ((tp & 7) < 3)
+	{
+		front = start[tp & 7] - ln->dist;
+		back = end[tp & 7] - ln->dist;
+	}
+
+	else
+	{
+		front = DotProduct(start, model->planes[tp >> 4].normal) - ln->dist;
+		back = DotProduct(end, model->planes[tp >> 4].normal) - ln->dist;
+	}
+
+	#else
+
+	plane = node->plane;
+
+	if (plane->type < 3)
+	{
+		front = start[plane->type] - plane->dist;
+		back = end[plane->type] - plane->dist;
+	}
+
+	else
+	{
+		front = DotProduct(start, plane->normal) - plane->dist;
+		back = DotProduct(end, plane->normal) - plane->dist;
+	}
+	#endif
+	
+	side = front < 0;
+
+#endif
+
+  
+#if 0
+	if ( (back < 0) == side)
+		return RecursiveLightPoint (node->children[side], start, end);
+#else
+
+	// LordHavoc: optimized recursion
+
+	if ((back < 0) == side)
+	{
+		n = ln->children[side];
+		goto loc0;
+	}
+#endif
+  
+	frac = front / (front-back);
+	mid[0] = start[0] + (end[0] - start[0])*frac;
+	mid[1] = start[1] + (end[1] - start[1])*frac;
+	mid[2] = start[2] + (end[2] - start[2])*frac;
+  
+	// go down front side 
+	r = RecursiveLightPointC (model, ln->children[side], start, mid);
+
+	if (r >= 0)
+	{
+		return r;   // hit something
+	}
+    
+	if ( (back < 0) == side )
+	{
+		return -1;    // didn't hit anuthing
+	}
+
+	// check for impact on this node
+	if(r_shadows.value)
+	{
+		VectorCopy (mid, lightspot);
+		//lightplane = plane; // (used by software render version?) - Cowcat
+	}
+
+	node = model->nodes + n;
+	surf = cl.worldmodel->surfaces + node->firstsurface;
+
+	for (i=0 ; i<node->numsurfaces ; i++, surf++)
+	{
+		if (surf->flags & SURF_DRAWTILED)
+			continue;	// no lightmaps
+
+		tex = surf->texinfo;
+    
+		s = DotProduct (mid, tex->vecs[0]) + tex->vecs[0][3];
+		t = DotProduct (mid, tex->vecs[1]) + tex->vecs[1][3];;
+
+		if (s < surf->texturemins[0] || t < surf->texturemins[1])
+			continue;
+    
+		ds = s - surf->texturemins[0];
+		dt = t - surf->texturemins[1];
+    
+		if ( ds > surf->extents[0] || dt > surf->extents[1] )
+			continue;
+
+		if (!surf->samples)
+		{
+			lp_surf = surf;		// R_LightPoint's cache: lit 0
+			lp_ofs = -1;
+			return 0;
+		}
+
+		ds >>= 4;
+		dt >>= 4;
+
+		lp_surf = surf;			// R_LightPoint's cache: this texel
+		lp_ofs = dt * ((surf->extents[0]>>4)+1) + ds;
+
+		lightmap = surf->samples;
+		r = 0;
+
+		if (lightmap)
+		{
+			//int smax = (surf->extents[0]>>4)+1;
+			//int tmax = (surf->extents[1]>>4)+1;
+
+			lightmap += dt * ((surf->extents[0]>>4)+1) + ds;
+			//lightmap += dt * smax + ds;
+
+			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
+			{
+				scale = d_lightstylevalue[surf->styles[maps]];
+				r += *lightmap * scale;
+				lightmap += ( (surf->extents[0]>>4)+1) * ((surf->extents[1]>>4)+1 );
+				//lightmap += ( smax * tmax );
+			}
+      
+			r >>= 8;
+		}
+    
+		return r;
+	}
+
+#if 0
+	// go down back side
+	return RecursiveLightPoint (node->children[!side], mid, end);
+#else
+	// LordHavoc: optimized recursion
+	// go down back side
+
+	n = ln->children[side ^ 1];
+	start[2] = mid[2]; 
+	goto loc0; 
+#endif
+
+}
+
+/*
 2026-11-06. R_LightPoint traced from each alias model's origin down through
 the BSP every frame, also for the models that never move (items, torches,
 idle monsters). The trace's result is a surface and a texel; only the light
@@ -1052,7 +1375,11 @@ int R_LightPoint (vec3_t p)
 	end[1] = temp[1];
 	end[2] = temp[2] - 2048; // 8192 johnfitz - too much ? Cowcat 2019
 
-	r = RecursiveLightPoint (cl.worldmodel->nodes, temp, end);
+	if (cl.worldmodel->leafnodes && cl.worldmodel->leafnodes_root == cl.worldmodel->nodes)
+		r = RecursiveLightPointC (cl.worldmodel, 0, temp, end);	// RadeonGL: the compact tree
+
+	else
+		r = RecursiveLightPoint (cl.worldmodel->nodes, temp, end);
 
 	VectorCopy (p, e->org);
 	e->surf = lp_surf;

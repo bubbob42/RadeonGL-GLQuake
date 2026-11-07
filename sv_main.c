@@ -787,6 +787,10 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 	edict_t *ent;
 
 	unsigned char ent_alpha; // for protocol 15 ?? - Cowcat
+	static int pvsfirst = -1;	// RadeonGL: -nopvsfirst, an A/B
+
+	if (pvsfirst < 0)
+		pvsfirst = COM_CheckParm ("-nopvsfirst") ? 0 : 1;
 
 	// find the client's PVS
 	VectorAdd (clent->v.origin, clent->v.view_ofs, org);
@@ -806,6 +810,21 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 		// ignore if not touching a PV leaf
 		if (ent != clent) // clent is ALLWAYS sent
 		{
+			/* RadeonGL, 2026-11-07: the PV leaf test first. It reads the
+			 * edict's first lines; the model test below reads deep into its
+			 * entvars and then the model's name in pr_strings -- two more
+			 * cache misses for each of the many entities out of sight. All
+			 * three tests only skip: the same entities pass in any order. */
+			if (pvsfirst && ent->num_leafs <= MAX_ENT_LEAFS)
+			{
+				for (i=0 ; i < ent->num_leafs ; i++)
+					if (pvs[ent->leafnums[i] >> 3] & (1 << (ent->leafnums[i]&7) ))
+						break;
+
+				if (i == ent->num_leafs)
+					continue;   // not visible
+			}
+
 			// ignore ents without visible models
 			if (!ent->v.modelindex || !pr_strings[ent->v.model])
 				continue;
@@ -818,7 +837,7 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 			#if 1
 
 			//Baker: Trivial accept from Spike and MH
-			if(ent->num_leafs <= MAX_ENT_LEAFS) // important optimization !! - Cowcat
+			if(!pvsfirst && ent->num_leafs <= MAX_ENT_LEAFS) // important optimization !! - Cowcat
 			{
 				for (i=0 ; i < ent->num_leafs ; i++)
 					if (pvs[ent->leafnums[i] >> 3] & (1 << (ent->leafnums[i]&7) ))

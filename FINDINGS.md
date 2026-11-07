@@ -360,6 +360,22 @@ about 5%: demo1 31.1 fps against 32.9).
   benchmark 46.81 -> 47.93 fps (+2.4%), the checksum unchanged, and frame
   500 of the play pixel-identical (FS-UAE, `test/auto/GLQuakePlayNullArg`:
   what the server sent and the client drew; `RunPlayB` dumps frame 500).
+- **The light walks on the compact tree** (gl_rlight.c, also under
+  `-noleafnodes`): `R_MarkLights` (dynamic lights) and `RecursiveLightPoint`
+  (`R_LightPoint`, models' light) descend on the 16-byte nodes and read the
+  `mnode_t` only where they work on a node's surfaces; the same axial
+  shortcut as id's, the surfaces from `cl.worldmodel` as id's (also for a
+  brush model's tree), `start[2]` changed in place as id's. demo1 29.3 ->
+  29.0 s (+1.0%); play 47.32 -> 48.64 fps with the server's compact walks
+  (+2.4% of it before: about +0.2% more); frame 400 of demo1, frame 500 of
+  the play and the checksum unchanged.
+- **Entities out of sight skipped sooner** (`SV_WriteEntitiesToClient`,
+  sv_main.c; `-nopvsfirst`): the PV leaf test now comes before the model
+  test. The leaf test reads the edict's first lines; the model test reads
+  deep into its entvars and then the model's name in `pr_strings` -- two
+  more misses for each of the many entities out of sight. All three tests
+  only skip, so the same entities pass. Play 48.69 -> 49.01 fps (+0.7%),
+  checksum and play picture unchanged.
 - **The QuakeC interpreter** (`PR_ExecuteProgram`, pr_exec.c): id counted
   every statement into `pr_xfunction->profile` in memory and tested
   `pr_trace` in memory; the count now runs in a register and goes into the
@@ -375,6 +391,12 @@ about 5%: demo1 31.1 fps against 32.9).
   060 pairs it): no flag change.
 - **Tried and left:** a cache for `SV_SetIdealPitch` (its traces also meet
   doors and platforms, which move while the player stands: not exact).
+  RadeonGL's `struct Core` (70 KB: the upload cache's queue and slots in
+  the middle) regrouped so that what every validate reads -- the shadow
+  registers, the matrix stack tops, `no_shadow`, the emit counter -- sits
+  beside `dirty` and the GL state: demo1 33.05 / 33.1, play 48.51 / 48.50
+  fps, nothing. `ValidateOnce`'s ~30 us a state block (46 a frame) is not
+  the struct's cache misses; reverted.
 
 ## Size of the port
 
