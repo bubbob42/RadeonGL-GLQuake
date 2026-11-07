@@ -168,7 +168,14 @@ extern int     pr_xstatement;
 
 extern unsigned short	 pr_crc;
 
+#ifdef __GNUC__
+/* never returns (RadeonGL, 2026-11-07): it ends in Host_Error. GCC then no
+ * longer treats the point after the runaway check as a loop entry, and the
+ * interpreter's loop runs no alignment padding per statement */
+void PR_RunError (char *error, ...) __attribute__((noreturn));
+#else
 void PR_RunError (char *error, ...);
+#endif
 
 void ED_PrintEdicts (void);
 void ED_PrintNum (int ent);

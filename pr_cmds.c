@@ -925,7 +925,7 @@ static void PF_checkclient (void)
 
 	self = PROG_TO_EDICT(pr_global_struct->self);
 	VectorAdd (self->v.origin, self->v.view_ofs, view);
-	leaf = Mod_PointInLeaf (view, sv.worldmodel);
+	leaf = SV_PointInLeaf (view);	// RadeonGL: kept per point (world.c)
 	l = (leaf - sv.worldmodel->leafs) - 1;
 
 	if ( (l<0) || !(checkpvs[l>>3] & (1<<(l&7)) ) )
@@ -996,13 +996,54 @@ PF_cvar
 float cvar (string)
 =================
 */
+/* RadeonGL, 2026-11-07: QuakeC asks for the same cvars every frame (id's
+ * StartFrame: "teamplay" and "skill"), and Cvar_FindVar walks the whole
+ * list with strcmp each time: 4.5% of play on the A4000D. The last few
+ * strings are kept with their cvar; a hit is checked against the cvar's
+ * name (a string's address can be reused, progs are reloaded each map).
+ * Cvars are never freed. The value is read as Cvar_VariableValue does. */
+#define PF_CVARS	8
+
+static char	*pf_cvarstr[PF_CVARS];
+static cvar_t	*pf_cvarvar[PF_CVARS];
+static int	pf_cvarnext;
+
 static void PF_cvar (void)
 {
-	char  *str;
+	char	*str;
+	cvar_t	*var;
+	int	i;
   
 	str = G_STRING(OFS_PARM0);
+
+	if (!SV_PlayCacheOn ())
+	{
+		G_FLOAT(OFS_RETURN) = Cvar_VariableValue (str);
+		return;
+	}
+
+	for (i = 0 ; i < PF_CVARS ; i++)
+	{
+		if (pf_cvarstr[i] == str && !Q_strcmp (str, pf_cvarvar[i]->name))
+		{
+			G_FLOAT(OFS_RETURN) = Q_atof (pf_cvarvar[i]->string);
+			return;
+		}
+	}
+
+	var = Cvar_FindVar (str);
+
+	if (!var)
+	{
+		G_FLOAT(OFS_RETURN) = 0;
+		return;
+	}
+
+	pf_cvarstr[pf_cvarnext] = str;
+	pf_cvarvar[pf_cvarnext] = var;
+	pf_cvarnext = (pf_cvarnext + 1) % PF_CVARS;
   
-	G_FLOAT(OFS_RETURN) = Cvar_VariableValue (str);
+	G_FLOAT(OFS_RETURN) = Q_atof (var->string);
 }
 
 /*

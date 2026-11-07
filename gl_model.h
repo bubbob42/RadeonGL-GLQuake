@@ -237,6 +237,33 @@ typedef struct mclipnode_s
 } mclipnode_t;
 //
 
+/* RadeonGL, 2026-11-07: a hull's clipnode with its plane's dist and type
+ * beside it, 16 bytes: one cache line a step where id's walk loads the
+ * clipnode and then its plane (two misses on the A4000D; most planes are
+ * axial, and those need no more). Built at load (gl_model.c); the walks in
+ * world.c use it when hull->nodes is set. */
+typedef struct mhullnode_s
+{
+	float		dist;		// the plane's
+	int		children[2];	// the clipnode's
+	int		typeplane;	// planenum << 3 | the plane's type (< 3: axial)
+
+} mhullnode_t;
+
+/* RadeonGL, 2026-11-07: the render tree's nodes for the point and box
+ * searches (Mod_PointInLeaf, SV_FindTouchedLeafs, SV_AddToFatPVS), 16
+ * bytes: id's walks load the mnode_t and then its plane through a pointer.
+ * A child is a node index (>= 0) or -1 - its leaf's index. unit (bit 3):
+ * the plane's normal is exactly the positive unit vector of its axis, so
+ * the dot product those walks compute equals p[type] - dist bit for bit. */
+typedef struct mleafnode_s
+{
+	float		dist;		// the plane's
+	int		children[2];
+	int		typeplane;	// planenum << 4 | unit << 3 | the plane's type
+
+} mleafnode_t;
+
 // !!! if this is changed, it must be changed in asm_i386.h too !!!
 typedef struct
 {
@@ -247,6 +274,7 @@ typedef struct
 	vec3_t		clip_mins;
 	vec3_t		clip_maxs;
 	int		available;	// johnfitz
+	mhullnode_t	*nodes;		// RadeonGL: the compact walk, NULL = as id
 
 } hull_t;
 
@@ -506,6 +534,10 @@ typedef struct model_s
 	modhint_t	modhint;	// zquake - special models
 	
 	qboolean	isworldmodel;	// added
+
+	mleafnode_t	*leafnodes;	// RadeonGL: the compact render tree, NULL = id's walks
+	signed char	*leafcontents;	// RadeonGL: every leaf's contents, dense
+	mnode_t		*leafnodes_root;	// RadeonGL: the nodes leafnodes[0] stands for
 //
 // additional model data
 //

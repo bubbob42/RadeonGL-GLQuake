@@ -501,6 +501,60 @@ SV_FindTouchedLeafs
 ===============
 */
 
+/* RadeonGL, 2026-11-07: SV_FindTouchedLeafs on the compact render tree
+ * (mleafnode_t, gl_model.h): the same tests, the same order of leaves */
+static void SV_FindTouchedLeafsC (edict_t *ent, int num)
+{
+	mleafnode_t	*n;
+	int		sides, t, leaf;
+
+loc0:
+	if (num < 0)
+	{
+		leaf = -1 - num;
+
+		if (sv.worldmodel->leafcontents[leaf] == CONTENTS_SOLID)
+			return;
+
+		if (ent->num_leafs >= MAX_ENT_LEAFS) // was ==
+		{
+			ent->num_leafs = MAX_ENT_LEAFS + 1; // Baker: too many mark it as such....
+			return;
+		}
+
+		ent->leafnums[ent->num_leafs] = leaf - 1;
+		ent->num_leafs++;
+		return;
+	}
+
+	n = sv.worldmodel->leafnodes + num;
+	t = n->typeplane & 7;
+
+	if (t < 3)
+		sides = (n->dist <= ent->v.absmin[t]) ? 1 : ((n->dist >= ent->v.absmax[t]) ? 2 : 3);
+
+	else
+		sides = BOX_ON_PLANE_SIDE (ent->v.absmin, ent->v.absmax, sv.worldmodel->planes + (n->typeplane >> 4));
+
+	switch (sides)
+	{
+		case 1:
+			num = n->children[0];
+			goto loc0;
+
+		case 2:
+			num = n->children[1];
+			goto loc0;
+
+		default: // 3
+			if (n->children[0] >= 0 || sv.worldmodel->leafcontents[-1 - n->children[0]] != CONTENTS_SOLID)
+				SV_FindTouchedLeafsC (ent, n->children[0]);
+
+			num = n->children[1];
+			goto loc0;
+	}
+}
+
 void SV_FindTouchedLeafs (edict_t *ent, mnode_t *node)
 {
 	mplane_t  *splitplane;
@@ -652,7 +706,13 @@ void SV_LinkEdict (edict_t *ent, qboolean touch_triggers)
 	ent->num_leafs = 0;
 
 	if (ent->v.modelindex)
-		SV_FindTouchedLeafs (ent, sv.worldmodel->nodes);
+	{
+		if (sv.worldmodel->leafnodes && sv.worldmodel->leafnodes_root == sv.worldmodel->nodes)
+			SV_FindTouchedLeafsC (ent, 0);	// RadeonGL: the compact tree
+
+		else
+			SV_FindTouchedLeafs (ent, sv.worldmodel->nodes);
+	}
 
 	if (ent->v.solid == SOLID_NOT)
 		return;
@@ -714,6 +774,39 @@ int SV_HullPointContents (hull_t *hull, int num, vec3_t p)
 	float		d;
 	mclipnode_t	*node; // jf was dclipnode_t
 	mplane_t	*plane;
+	mhullnode_t	*n;
+	int		t;
+
+	if (hull->nodes)
+	{
+		/* RadeonGL, 2026-11-07: the compact walk (gl_model.h), the same
+		 * arithmetic, one cache line a step for an axial plane */
+		while (num >= 0)
+		{
+			if (num < hull->firstclipnode || num > hull->lastclipnode)
+				Host_Error ("SV_HullPointContents: bad node number");
+
+			n = hull->nodes + num;
+			t = n->typeplane & 7;
+
+			if (t < 3)
+				d = p[t] - n->dist;
+
+			else
+			{
+				plane = hull->planes + (n->typeplane >> 3);
+				d = DotProduct (plane->normal, p) - n->dist;
+			}
+
+			if (d < 0)
+				num = n->children[1];
+
+			else
+				num = n->children[0];
+		}
+
+		return num;
+	}
 
 	while (num >= 0)
 	{
@@ -749,11 +842,109 @@ SV_PointContents
 ==================
 */
 
+/*
+==================
+The server's point caches (RadeonGL, 2026-11-07)
+
+Every monster asks for the contents at its origin every frame
+(SV_CheckWaterTransition in SV_Physics_Step), standing or not: 23 walks of
+the world's hull a frame on e1m1, 5.8% of play on the A4000D (memory
+latency, not arithmetic). PF_checkclient finds the leaf of each idle
+monster's eye the same way, 6 times a frame. The world never changes
+during a map, so the answer for a point is kept, keyed by the point's
+exact bits, until SV_ClearPointCaches (SV_SpawnServer, after the world
+model is loaded). Direct-mapped: a collision only costs the walk.
+==================
+*/
+#define SV_PCC_BITS	8
+#define SV_PCC_SIZE	(1 << SV_PCC_BITS)
+
+typedef struct
+{
+	unsigned long	p[3];	// the point's bits
+	int		gen;	// valid while sv_pc_gen equals it
+	int		contents;
+	mleaf_t		*leaf;
+} svpointcache_t;
+
+static svpointcache_t	sv_pcc[SV_PCC_SIZE];	// SV_HullPointContents, hull 0
+static svpointcache_t	sv_plc[SV_PCC_SIZE];	// Mod_PointInLeaf
+static int		sv_pc_gen = 1;
+static int		sv_playcache = -1;	// -noplaycache: off, for an A/B
+
+/* the play caches in use (these two and PF_cvar's): -noplaycache turns
+ * them off, for an A/B with one binary */
+int SV_PlayCacheOn (void)
+{
+	if (sv_playcache < 0)
+		sv_playcache = !COM_CheckParm ("-noplaycache");
+
+	return sv_playcache;
+}
+
+void SV_ClearPointCaches (void)
+{
+	sv_pc_gen++;
+}
+
+static svpointcache_t *SV_PointSlot (svpointcache_t *table, vec3_t p, unsigned long *bits)
+{
+	memcpy (bits, p, 3 * sizeof (float));
+
+	return table + (((bits[0] * 0x9E3779B1UL) ^ (bits[1] * 0x85EBCA77UL) ^
+		(bits[2] * 0xC2B2AE3DUL)) >> (32 - SV_PCC_BITS));
+}
+
+/*
+==================
+SV_PointInLeaf
+
+Mod_PointInLeaf (p, sv.worldmodel), kept per point
+==================
+*/
+mleaf_t *SV_PointInLeaf (vec3_t p)
+{
+	svpointcache_t	*e;
+	unsigned long	bits[3];
+
+	if (!SV_PlayCacheOn ())
+		return Mod_PointInLeaf (p, sv.worldmodel);
+
+	e = SV_PointSlot (sv_plc, p, bits);
+
+	if (e->gen == sv_pc_gen && e->p[0] == bits[0] && e->p[1] == bits[1] && e->p[2] == bits[2])
+		return e->leaf;
+
+	e->leaf = Mod_PointInLeaf (p, sv.worldmodel);
+	e->p[0] = bits[0];
+	e->p[1] = bits[1];
+	e->p[2] = bits[2];
+	e->gen = sv_pc_gen;
+
+	return e->leaf;
+}
+
 int SV_PointContents (vec3_t p)
 {
-	int   cont;
+	int		cont;
+	svpointcache_t	*e;
+	unsigned long	bits[3];
 
-	cont = SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
+	if (!SV_PlayCacheOn ())
+		cont = SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
+
+	else if ((e = SV_PointSlot (sv_pcc, p, bits))->gen == sv_pc_gen && e->p[0] == bits[0] && e->p[1] == bits[1] && e->p[2] == bits[2])
+		cont = e->contents;
+
+	else
+	{
+		cont = SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
+		e->contents = cont;
+		e->p[0] = bits[0];
+		e->p[1] = bits[1];
+		e->p[2] = bits[2];
+		e->gen = sv_pc_gen;
+	}
 
 	if (cont <= CONTENTS_CURRENT_0 && cont >= CONTENTS_CURRENT_DOWN)
 		cont = CONTENTS_WATER;
@@ -817,6 +1008,9 @@ qboolean SV_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec
 	int		side;
 	float		midf;
 	vec3_t		mid;
+	mhullnode_t	*hn;
+	int		t;
+	int		ch[2];	// the node's children (either walk)
 
 loc0:
 	// check for empty
@@ -846,50 +1040,80 @@ loc0:
 	// find the point distances
 	//
 
-	node = hull->clipnodes + num;
-	plane = hull->planes + node->planenum;
-
-	if (plane->type < 3)
+	if (hull->nodes)
 	{
-		t1 = p1[plane->type] - plane->dist;
-		t2 = p2[plane->type] - plane->dist;
+		/* RadeonGL, 2026-11-07: the compact walk (gl_model.h); the plane
+		 * itself is read only for a slanted plane or at the impact */
+		hn = hull->nodes + num;
+		t = hn->typeplane & 7;
+		plane = hull->planes + (hn->typeplane >> 3);
+
+		if (t < 3)
+		{
+			t1 = p1[t] - hn->dist;
+			t2 = p2[t] - hn->dist;
+		}
+
+		else
+		{
+			t1 = DotProduct (plane->normal, p1) - hn->dist;
+			t2 = DotProduct (plane->normal, p2) - hn->dist;
+		}
+
+		ch[0] = hn->children[0];
+		ch[1] = hn->children[1];
 	}
 
 	else
 	{
-		t1 = DotProduct (plane->normal, p1) - plane->dist;
-		t2 = DotProduct (plane->normal, p2) - plane->dist;
+		node = hull->clipnodes + num;
+		plane = hull->planes + node->planenum;
+
+		if (plane->type < 3)
+		{
+			t1 = p1[plane->type] - plane->dist;
+			t2 = p2[plane->type] - plane->dist;
+		}
+
+		else
+		{
+			t1 = DotProduct (plane->normal, p1) - plane->dist;
+			t2 = DotProduct (plane->normal, p2) - plane->dist;
+		}
+
+		ch[0] = node->children[0];
+		ch[1] = node->children[1];
 	}
   
 	#if 1
 
 	/*
 	if (t1 >= 0 && t2 >= 0)
-		return SV_RecursiveHullCheck (hull, node->children[0], p1f, p2f, p1, p2, trace);
+		return SV_RecursiveHullCheck (hull, ch[0], p1f, p2f, p1, p2, trace);
 	if (t1 < 0 && t2 < 0)
-		return SV_RecursiveHullCheck (hull, node->children[1], p1f, p2f, p1, p2, trace);
+		return SV_RecursiveHullCheck (hull, ch[1], p1f, p2f, p1, p2, trace);
 	*/
 
 	// LordHavoc: recursion optimization 
 	if (t1 >= 0 && t2 >= 0) 
 	{ 
-		num = node->children[0]; 
+		num = ch[0]; 
 		goto loc0; 
 	}
 
 	if (t1 < 0 && t2 < 0) 
 	{ 
-		num = node->children[1]; 
+		num = ch[1]; 
 		goto loc0; 
 	} 
 
 	#else
 
 	if ( (t1 >= DIST_EPSILON && t2 >= DIST_EPSILON) || (t2 > t1 && t1 >= 0) )
-		return SV_RecursiveHullCheck (hull, node->children[0], p1f, p2f, p1, p2, trace);
+		return SV_RecursiveHullCheck (hull, ch[0], p1f, p2f, p1, p2, trace);
 
 	if ( (t1 <= -DIST_EPSILON && t2 <= -DIST_EPSILON) || (t2 < t1 && t1 <= 0) )
-		return SV_RecursiveHullCheck (hull, node->children[1], p1f, p2f, p1, p2, trace);
+		return SV_RecursiveHullCheck (hull, ch[1], p1f, p2f, p1, p2, trace);
 	#endif
 
 	// put the crosspoint DIST_EPSILON pixels on the near side
@@ -917,20 +1141,20 @@ loc0:
 
 	// move up to the node
 
-	if (!SV_RecursiveHullCheck (hull, node->children[side], p1f, midf, p1, mid, trace) )
+	if (!SV_RecursiveHullCheck (hull, ch[side], p1f, midf, p1, mid, trace) )
 		return false;
 
 	#ifdef PARANOID
-	if (SV_HullPointContents (sv_hullmodel, mid, node->children[side]) == CONTENTS_SOLID)
+	if (SV_HullPointContents (sv_hullmodel, mid, ch[side]) == CONTENTS_SOLID)
 	{
 		Con_Printf ("mid PointInHullSolid\n");
 		return false;
 	}
 	#endif
   
-	if (SV_HullPointContents (hull, node->children[side^1], mid) != CONTENTS_SOLID)
+	if (SV_HullPointContents (hull, ch[side^1], mid) != CONTENTS_SOLID)
 		// go past the node
-		return SV_RecursiveHullCheck (hull, node->children[side^1], midf, p2f, mid, p2, trace);
+		return SV_RecursiveHullCheck (hull, ch[side^1], midf, p2f, mid, p2, trace);
   
 	if (trace->allsolid)
 		return false;	// never got out of the solid area

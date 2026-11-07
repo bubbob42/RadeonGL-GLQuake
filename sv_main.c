@@ -527,6 +527,58 @@ static int	fatbytes;
 static byte	*fatpvs; // new 2019 - Cowcat
 static int	fatpvs_capacity; //
 
+/* RadeonGL, 2026-11-07: SV_AddToFatPVS on the compact render tree
+ * (mleafnode_t, gl_model.h): the same distances, the same leaves */
+static void SV_AddToFatPVSC (vec3_t org, int num, model_t *worldmodel)
+{
+	int		i, t;
+	byte		*pvs;
+	mplane_t	*plane;
+	mleafnode_t	*n;
+	float		d;
+
+	while (1)
+	{
+		// if this is a leaf, accumulate the pvs bits
+		if (num < 0)
+		{
+			if (worldmodel->leafcontents[-1 - num] != CONTENTS_SOLID)
+			{
+				pvs = Mod_LeafPVS (worldmodel->leafs + (-1 - num), worldmodel);
+
+				for (i=0 ; i<fatbytes ; i++)
+					fatpvs[i] |= pvs[i];
+			}
+
+			return;
+		}
+
+		n = worldmodel->leafnodes + num;
+		t = n->typeplane;
+
+		if (t & 8)
+			d = org[t & 7] - n->dist;
+
+		else
+		{
+			plane = worldmodel->planes + (t >> 4);
+			d = DotProduct (org, plane->normal) - n->dist;
+		}
+
+		if (d > 8)
+			num = n->children[0];
+
+		else if (d < -8)
+			num = n->children[1];
+
+		else
+		{	// go down both
+			SV_AddToFatPVSC (org, n->children[0], worldmodel);
+			num = n->children[1];
+		}
+	}
+}
+
 void SV_AddToFatPVS (vec3_t org, mnode_t *node, model_t *worldmodel) // jf
 {
 	int		i;
@@ -592,7 +644,10 @@ byte *SV_FatPVS (vec3_t org, model_t *worldmodel) // jf
 	//
 
 	Q_memset (fatpvs, 0, fatbytes);
-	SV_AddToFatPVS (org, worldmodel->nodes, worldmodel); // jf
+	if (worldmodel->leafnodes && worldmodel->leafnodes_root == worldmodel->nodes)
+		SV_AddToFatPVSC (org, 0, worldmodel);	// RadeonGL: the compact tree
+	else
+		SV_AddToFatPVS (org, worldmodel->nodes, worldmodel); // jf
 
 	return fatpvs;
 }
@@ -1740,6 +1795,7 @@ void SV_SpawnServer (char *server)
 	}
 
 	sv.models[1] = sv.worldmodel;
+	SV_ClearPointCaches ();	// RadeonGL: a new world (world.c)
   
 	//
 	// clear world interaction links

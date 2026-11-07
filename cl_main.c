@@ -188,6 +188,170 @@ An svc_signonnum has been received, perform a client side setup
 */
 void RGL_ProfStart (void);	/* RadeonGL: sys_amiga.c, QuakeProfile */
 
+/* RadeonGL, 2026-11-07: -playbench N, a played map as a benchmark. From
+ * the map's start (signon 4) N host frames are timed; then the speed and a
+ * checksum of the server's entities are printed and GLQuake quits. With
+ * +host_framerate fixed every build plays the same game (rand() is never
+ * seeded, each frame calls it as often): equal checksums prove that a
+ * change kept the server's results.
+ *
+ * The play comes from id1/playbench.txt: lines "<frame> <command>" (frames
+ * counted from the map's start, ascending; // or ; starts a comment line;
+ * the repository's playbench.txt is the e1m1 script), each run once at its frame
+ * (Cmd_ExecuteString, as typed). Not a cfg of `wait`s: every wait makes
+ * Cbuf_Execute move the rest of the buffer, every alias expansion copies
+ * it through Z_Malloc -- 5% of a frame that real play never spends. */
+#define PB_LINES	1024
+
+static int	pb_frames = -1;
+static int	pb_n;
+static double	pb_t0;
+static char	pb_text[32768];
+static int	pb_at[PB_LINES];
+static char	*pb_cmd[PB_LINES];
+static int	pb_count, pb_next;
+
+static void PB_LoadScript (void)
+{
+	char	*p, *s;
+
+	pb_count = pb_next = 0;
+	s = (char *) COM_LoadStackFile ("playbench.txt", pb_text, sizeof (pb_text));
+
+	if (!s)
+	{
+		Con_Printf ("playbench: no id1/playbench.txt, nothing played\n");
+		return;
+	}
+
+	for (p = s ; *p && pb_count < PB_LINES ; )
+	{
+		while (*p == '\n' || *p == '\r' || *p == ' ')
+			p++;
+
+		if (!*p)
+			break;
+
+		if (*p == '/' || *p == ';')	// a comment line
+		{
+			while (*p && *p != '\n')
+				p++;
+
+			continue;
+		}
+
+		pb_at[pb_count] = Q_atoi (p);
+
+		while (*p && *p != ' ' && *p != '\n')
+			p++;
+
+		while (*p == ' ')
+			p++;
+
+		pb_cmd[pb_count] = p;
+
+		while (*p && *p != '\n' && *p != '\r')
+			p++;
+
+		if (*p)
+			*p++ = 0;
+
+		pb_count++;
+	}
+
+	Con_Printf ("playbench: %d commands\n", pb_count);
+}
+
+static void CL_PlayBenchStart (void)
+{
+	int	i;
+
+	if (pb_frames >= 0)
+		return;
+
+	i = COM_CheckParm ("-playbench");
+
+	if (!i || i + 1 >= com_argc)
+		return;
+
+	pb_n = Q_atoi (com_argv[i + 1]);
+
+	if (pb_n <= 0)
+		return;
+
+	PB_LoadScript ();
+	pb_frames = 0;
+	pb_t0 = Sys_FloatTime ();
+}
+
+static unsigned long PB_Mix (unsigned long h, void *p, int len)
+{
+	unsigned char	*b = (unsigned char *) p;
+	int		i;
+
+	for (i = 0 ; i < len ; i++)
+		h = (h ^ b[i]) * 16777619UL;
+
+	return h;
+}
+
+void CL_PlayBenchFrame (void)
+{
+	unsigned long	h;
+	double		t;
+	edict_t		*ent;
+	int		i;
+
+	if (pb_frames < 0 || pb_n == 0)
+		return;
+
+	while (pb_next < pb_count && pb_at[pb_next] <= pb_frames)
+		Cmd_ExecuteString (pb_cmd[pb_next++], src_command);
+
+	if (++pb_frames < pb_n)
+		return;
+
+	t = Sys_FloatTime () - pb_t0;
+	h = 2166136261UL;
+
+	if (sv.active)
+	{
+		for (i = 0 ; i < sv.num_edicts ; i++)
+		{
+			ent = EDICT_NUM (i);
+			h = PB_Mix (h, &ent->free, sizeof (ent->free));
+
+			if (ent->free)
+				continue;
+
+			h = PB_Mix (h, ent->v.origin, sizeof (vec3_t));
+			h = PB_Mix (h, ent->v.angles, sizeof (vec3_t));
+			h = PB_Mix (h, ent->v.velocity, sizeof (vec3_t));
+			h = PB_Mix (h, &ent->v.health, sizeof (float));
+			h = PB_Mix (h, &ent->v.frame, sizeof (float));
+			h = PB_Mix (h, &ent->v.flags, sizeof (float));
+			h = PB_Mix (h, &ent->v.nextthink, sizeof (float));
+		}
+	}
+
+	Con_Printf ("playbench: %d frames %.2f seconds %.2f fps\n", pb_frames, t, t > 0 ? pb_frames / t : 0);
+
+	if (sv.active)
+	{
+		ent = EDICT_NUM (1);
+		Con_Printf ("playbench state: %08lx, sv.time %.2f, edicts %d, kills %d of %d, health %d, origin %.1f %.1f %.1f\n",
+			h, sv.time, sv.num_edicts, (int) pr_global_struct->killed_monsters,
+			(int) pr_global_struct->total_monsters, (int) ent->v.health,
+			ent->v.origin[0], ent->v.origin[1], ent->v.origin[2]);
+	}
+
+	/* quit at once: from the console "quit" does not ask, and at the
+	 * buffer's front it does not wait behind the play script */
+	pb_n = 0;
+	key_dest = key_console;
+	Cbuf_InsertText ("quit\n");
+}
+
 void CL_SignonReply (void)
 {
 	char  str[8192];
@@ -225,7 +389,10 @@ void CL_SignonReply (void)
 			 * too, from the first map's start to the quit (a timedemo
 			 * starts it in cl_demo.c) */
 			if (!cls.demoplayback)
+			{
 				RGL_ProfStart ();
+				CL_PlayBenchStart ();
+			}
 			break;
 	}
 }

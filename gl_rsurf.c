@@ -2943,6 +2943,26 @@ static void R_SetupWorldBops (void)
 	}
 }
 
+/* RadeonGL, 2026-11-07: the world's surfaces' visframe in a dense array
+ * (R_NewSurfVis, from R_NewMap). The walk wrote surf->visframe into every
+ * surface of every visible leaf and read it back for every surface of
+ * every node it passed -- a cache miss each on the A4000D, msurface_t being
+ * far bigger than a line; four of these ints share one. Only the walk uses
+ * a surface's visframe. -nosurfvis keeps id's field (an A/B). */
+int		*r_surfvis;	// numsurfaces of the world, NULL: surf->visframe
+static msurface_t *r_surfbase;	// the world's surfaces, r_surfvis' index 0
+
+void R_NewSurfVis (void)
+{
+	r_surfvis = NULL;
+	r_surfbase = cl.worldmodel->surfaces;
+
+	if (COM_CheckParm ("-nosurfvis") || cl.worldmodel->numsurfaces <= 0)
+		return;
+
+	r_surfvis = (int *) Hunk_AllocName (cl.worldmodel->numsurfaces * sizeof (int), "surfvis");
+}
+
 /* the surfaces of a decision node the walk reached, dot = the eye's side of
  * its plane (2026-11-06: out of R_RecursiveWorldNode, unchanged, for the
  * walk below) */
@@ -2950,6 +2970,7 @@ static void R_WorldNodeSurfaces (mnode_t *node, double dot)
 {
 	int		c, side = 0;
 	msurface_t	*surf;
+	int		k;
 
 
 	c = node->numsurfaces;
@@ -2957,6 +2978,7 @@ static void R_WorldNodeSurfaces (mnode_t *node, double dot)
 	if (c)
 	{
 		surf = cl.worldmodel->surfaces + node->firstsurface;
+		k = node->firstsurface;
 
 		if (dot < 0 -BACKFACE_EPSILON)
 			side = SURF_PLANEBACK;
@@ -2964,9 +2986,9 @@ static void R_WorldNodeSurfaces (mnode_t *node, double dot)
 		else if (dot > BACKFACE_EPSILON)
 			side = 0;	
 
-		for ( ; c ; c--, surf++)
+		for ( ; c ; c--, surf++, k++)
 		{
-			if (surf->visframe != r_framecount)
+			if ((r_surfvis ? r_surfvis[k] : surf->visframe) != r_framecount)
 				continue;
 
 			// don't backface underwater surfaces, because they warp
@@ -3069,7 +3091,17 @@ loc0:
 		mark = pleaf->firstmarksurface;
 		c = pleaf->nummarksurfaces;
 
-		if (c)
+		if (c && r_surfvis)
+		{
+			do
+			{
+				r_surfvis[*mark - r_surfbase] = r_framecount;
+				mark++;
+
+			} while (--c);
+		}
+
+		else if (c)
 		{
 			do
 			{
@@ -3224,7 +3256,17 @@ static void R_WalkWorld (mnode_t *root, int rootflags)
 			mark = pleaf->firstmarksurface;
 			c = pleaf->nummarksurfaces;
 
-			if (c)
+			if (c && r_surfvis)
+			{
+				do
+				{
+					r_surfvis[*mark - r_surfbase] = r_framecount;
+					mark++;
+
+				} while (--c);
+			}
+
+			else if (c)
 			{
 				do
 				{

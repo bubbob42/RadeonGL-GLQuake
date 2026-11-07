@@ -330,7 +330,12 @@ void Host_ServerFrame (void);
 void Host_InitCommands (void);
 void Host_Init (quakeparms_t *parms);
 void Host_Shutdown(void);
+#ifdef __GNUC__
+/* never returns (RadeonGL, 2026-11-07): it ends in longjmp or Sys_Error */
+void Host_Error (char *error, ...) __attribute__((noreturn));
+#else
 void Host_Error (char *error, ...);
+#endif
 void Host_EndGame (char *message, ...);
 void Host_Frame (float time);
 void Host_Quit_f (void);

@@ -57,6 +57,10 @@ void SV_LinkEdict (edict_t *ent, qboolean touch_triggers);
 // if touchtriggers, calls prog functions for the intersected triggers
 
 int SV_PointContents (vec3_t p);
+mleaf_t *SV_PointInLeaf (vec3_t p);
+void SV_ClearPointCaches (void);
+int SV_PlayCacheOn (void);	// -noplaycache turns the play caches off
+// RadeonGL, 2026-11-07: both kept per point until the next world (world.c)
 int SV_TruePointContents (vec3_t p);
 // returns the CONTENTS_* value from the world at the given point.
 // does not check any entities at all

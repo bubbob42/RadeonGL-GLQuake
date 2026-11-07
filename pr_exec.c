@@ -397,6 +397,18 @@ void PR_ExecuteProgram (func_t fnum)
 	dstatement_t	*st;
 	dfunction_t	*f, *newf;
 	edict_t		*ed;
+	int		prof;	// RadeonGL: statements of pr_xfunction not yet in its profile
+	qboolean	trace;	// RadeonGL: pr_trace, read again after every builtin
+
+	/* RadeonGL, 2026-11-07: id counted every statement into
+	 * pr_xfunction->profile (a load and a write to memory) and tested
+	 * pr_trace in memory, per statement. The count now runs in a register
+	 * and goes into the profile before every call, return and error --
+	 * wherever pr_xfunction can change or the loop can be left; only the
+	 * console's "profile" reads it, between frames. pr_trace can change
+	 * only in a builtin (traceon, or a nested PR_ExecuteProgram that sets
+	 * it false): read again after each. The same counts, the same trace. */
+#define PR_FLUSHPROF()	(pr_xfunction->profile += prof, prof = 0)
 
 	if (!fnum || fnum >= progs->numfunctions)
 	{
@@ -415,6 +427,8 @@ void PR_ExecuteProgram (func_t fnum)
 	exitdepth = pr_depth;
 
 	s = PR_EnterFunction (f);
+	prof = 0;
+	trace = pr_trace;
   
 	while (1)
 	{
@@ -426,12 +440,15 @@ void PR_ExecuteProgram (func_t fnum)
 		c = (eval_t *)&pr_globals[st->c];
   
 		if (!--runaway)
+		{
+			PR_FLUSHPROF ();
 			PR_RunError ("runaway loop error");
+		}
     
-		pr_xfunction->profile++;
+		prof++;
 		pr_xstatement = s;
   
-		if (pr_trace)
+		if (trace)
 			PR_PrintStatement (st);
     
 		switch (st->op)
@@ -616,7 +633,10 @@ void PR_ExecuteProgram (func_t fnum)
 			#endif
 
 				if (ed == (edict_t *)sv.edicts && sv.state == ss_active)
+				{
+					PR_FLUSHPROF ();
 					PR_RunError ("assignment to world entity");
+				}
 
 				c->_int = (byte *)((int *)&ed->v + b->_int) - (byte *)sv.edicts;
 				break;
@@ -673,6 +693,7 @@ void PR_ExecuteProgram (func_t fnum)
 			case OP_CALL7:
 			case OP_CALL8:
 				pr_argc = st->op - OP_CALL0;
+				PR_FLUSHPROF ();
 
 				if (!a->function)
 					PR_RunError ("NULL function");
@@ -687,6 +708,7 @@ void PR_ExecuteProgram (func_t fnum)
 						PR_RunError ("Bad builtin call number");
 
 					pr_builtins[i] ();
+					trace = pr_trace;
 					break;
 				}
 
@@ -698,6 +720,7 @@ void PR_ExecuteProgram (func_t fnum)
 				pr_globals[OFS_RETURN] = pr_globals[st->a];
 				pr_globals[OFS_RETURN+1] = pr_globals[st->a+1];
 				pr_globals[OFS_RETURN+2] = pr_globals[st->a+2];
+				PR_FLUSHPROF ();
   
 				s = PR_LeaveFunction ();
 
@@ -723,6 +746,7 @@ void PR_ExecuteProgram (func_t fnum)
 				break;
     
 			default:
+				PR_FLUSHPROF ();
 				PR_RunError ("Bad opcode %i", st->op);
 		}
 	}

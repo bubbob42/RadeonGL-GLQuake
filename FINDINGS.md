@@ -307,6 +307,75 @@ about 5%: demo1 31.1 fps against 32.9).
     automatic pitch on slopes); `SV_RecursiveHullCheck` 3.4%,
     `PR_ExecuteProgram` 3.3%.
 
+## Real play, measured (2026-11-07)
+
+- **The play benchmark** (`-playbench N`, cl_main.c; `playbench.txt`, the
+  e1m1 script): N frames from the map's start with a fixed frame time
+  (`+host_framerate 0.03`), the play from "<frame> <command>" lines, no
+  mouse or joystick (`-nomouse -nojoy -nopsx`). At the end the speed and a
+  checksum of the server's entities. Every build plays the same game:
+  `rand()` is never seeded, and with -playbench `_Host_Frame` calls it once
+  per frame that runs (id calls it before the 72 fps limit, so turned-away
+  calls followed real time -- three FS-UAE runs gave three checksums before,
+  one after). Equal checksums between two builds prove a change kept the
+  game's results. RadeonGL `docs/hw/a4000d/playbench_run.py` (A4000D),
+  `test/auto/GLQuakePlayNull` (FS-UAE null card: off, on, on again).
+  The first version timed its play with `wait`s in a cfg: each wait made
+  Cbuf_Execute move the rest of the buffer and each alias expansion copied
+  it through Z_Malloc -- 5% of a frame that real play never spends.
+- **Three caches for the server** (`-noplaycache` turns them off):
+  contents per point (world.c, the world never changes during a map),
+  the leaf per point for `PF_checkclient`, and QuakeC's `cvar()` by string
+  (pr_cmds.c, checked against the cvar's name). A4000D, 2000 frames, ABBA
+  with one binary: 42.82 -> 46.65 fps (+8.9%), checksum ff0cd170 in all.
+- **The compact hull walk** (`mhullnode_t`, gl_model.h; `-nohullnodes`):
+  a clipnode with its plane's dist and type beside it, 16 bytes, one cache
+  line a step where id's walk loads the clipnode and then its plane;
+  `SV_HullPointContents` and `SV_RecursiveHullCheck`; the box hull keeps
+  id's. 46.12 -> 46.95 fps (+1.8%), the same checksum.
+- **What the server still calls** (counting build, per frame): `SV_Move`
+  19.5 (`SV_FlyMove` 7, `SV_SetIdealPitch` 3.9, `SV_TryUnstick` 2.3 -- the
+  player rubbing a wall --, monster steps 1.9, ground checks 1.7);
+  `SV_HullPointContents` 51.5, 38 of them the traces' crossing tests (id's
+  algorithm); `SV_LinkEdict` 6.5, a third with unchanged bounds;
+  `Mod_PointInLeaf` 3.6. What is left is the algorithm, not repeats.
+- **The world walk's visframes in a dense array** (`r_surfvis`,
+  gl_rsurf.c, from `R_NewMap`; `-nosurfvis`): the walk wrote
+  `surf->visframe` into every surface of every visible leaf and read it back
+  for every surface of every node it passed, a cache miss each
+  (`msurface_t` is far bigger than a line); now four surfaces share a line.
+  Only the walk uses a surface's visframe. demo1 32.85 -> 33.05 fps
+  (+0.6%), the play benchmark 46.60 -> 47.00 (+0.9%); frame 400 of demo1
+  pixel-identical (FS-UAE, `test/auto/GLQuakeNullPixArg`: one binary, the
+  switch in `pixA.args`).
+- **The render tree's compact nodes** (`mleafnode_t`, gl_model.h;
+  `-noleafnodes`): `Mod_PointInLeaf`, `SV_FindTouchedLeafs` and
+  `SV_AddToFatPVS` walk 16-byte nodes (the plane's dist and type beside the
+  children) instead of an `mnode_t` and its plane through a pointer, and
+  read the leaves' contents from a dense array. Exact: `Mod_PointInLeaf`
+  and `SV_AddToFatPVS` compute a full dot product even for axial planes;
+  the node's `unit` bit (the normal is exactly the positive unit vector)
+  allows `p[type] - dist`, the same value bit for bit; the box test keeps
+  id's axial shortcut and its `BoxOnPlaneSideFunc` for the rest. Play
+  benchmark 46.81 -> 47.93 fps (+2.4%), the checksum unchanged, and frame
+  500 of the play pixel-identical (FS-UAE, `test/auto/GLQuakePlayNullArg`:
+  what the server sent and the client drew; `RunPlayB` dumps frame 500).
+- **The QuakeC interpreter** (`PR_ExecuteProgram`, pr_exec.c): id counted
+  every statement into `pr_xfunction->profile` in memory and tested
+  `pr_trace` in memory; the count now runs in a register and goes into the
+  profile before every call, return and error (wherever `pr_xfunction` can
+  change or the loop be left -- only the console's "profile" reads it), and
+  `pr_trace` is read again after each builtin (only a builtin can change
+  it). And seven alignment no-ops of `-falign-loops=16` ran with every
+  statement: GCC took the point after the runaway check for a loop entry,
+  because `PR_RunError` seemed to return. `PR_RunError` and `Host_Error`
+  are declared `noreturn` now (GCC builds); the binary 5 KB smaller. Play
+  benchmark 48.22 -> 48.69 fps (+1.0%, two binaries, ABBA), the checksum
+  unchanged. Elsewhere such executed padding is 0.3% of the samples (the
+  060 pairs it): no flag change.
+- **Tried and left:** a cache for `SV_SetIdealPitch` (its traces also meet
+  doors and platforms, which move while the player stands: not exact).
+
 ## Size of the port
 
 The RadeonGL build compiles 70 of the 141 C files (the rest: other platforms,

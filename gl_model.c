@@ -100,6 +100,35 @@ mleaf_t *Mod_PointInLeaf (vec3_t p, model_t *model)
 	if (!model || !model->nodes)
 		Sys_Error ("Mod_PointInLeaf: bad model");
 
+	if (model->leafnodes && model->nodes == model->leafnodes_root)
+	{
+		/* RadeonGL: the compact tree (gl_model.h), the same arithmetic */
+		mleafnode_t	*n;
+		int		num, t;
+
+		num = 0;
+
+		do
+		{
+			n = model->leafnodes + num;
+			t = n->typeplane;
+
+			if (t & 8)
+				d = p[t & 7] - n->dist;
+
+			else
+			{
+				plane = model->planes + (t >> 4);
+				d = DotProduct (p, plane->normal) - n->dist;
+			}
+
+			num = (d > 0) ? n->children[0] : n->children[1];
+
+		} while (num >= 0);
+
+		return model->leafs + (-1 - num);
+	}
+
 	node = model->nodes;
 
 	while (1)
@@ -1779,6 +1808,108 @@ void Mod_MakeHull0 (void)
 
 /*
 =================
+Mod_HullNodes / Mod_MakeHullNodes (RadeonGL, 2026-11-07)
+
+The hulls' compact walk (mhullnode_t, gl_model.h): hull 0 from
+Mod_MakeHull0's clipnodes, hulls 1 and 2 share the map's. -nohullnodes
+leaves them out (id's walk, for an A/B).
+=================
+*/
+static mhullnode_t *Mod_HullNodes (mclipnode_t *in, int count)
+{
+	mhullnode_t	*out, *n;
+	mplane_t	*plane;
+	int		i;
+
+	out = (mhullnode_t *) Hunk_AllocName (count * sizeof(*out), loadname);
+
+	for (i=0, n=out ; i<count ; i++, n++, in++)
+	{
+		plane = loadmodel->planes + in->planenum;
+		n->dist = plane->dist;
+		n->children[0] = in->children[0];
+		n->children[1] = in->children[1];
+		n->typeplane = (in->planenum << 3) | (plane->type & 7);
+	}
+
+	return out;
+}
+
+/*
+=================
+Mod_MakeLeafNodes (RadeonGL, 2026-11-07)
+
+The render tree's compact nodes (mleafnode_t, gl_model.h) and the leaves'
+contents. Before the submodel loop, while numleafs still counts every leaf.
+-noleafnodes leaves them out (id's walks, for an A/B).
+=================
+*/
+static void Mod_MakeLeafNodes (void)
+{
+	mleafnode_t	*out;
+	mnode_t		*in, *child;
+	mplane_t	*pl;
+	int		i, j, t, unit;
+
+	loadmodel->leafnodes = NULL;
+	loadmodel->leafcontents = NULL;
+	loadmodel->leafnodes_root = loadmodel->nodes;
+
+	if (COM_CheckParm ("-noleafnodes") || loadmodel->numnodes <= 0)
+		return;
+
+	out = (mleafnode_t *) Hunk_AllocName (loadmodel->numnodes * sizeof(*out), loadname);
+	loadmodel->leafcontents = (signed char *) Hunk_AllocName (loadmodel->numleafs, loadname);
+
+	for (i=0 ; i<loadmodel->numleafs ; i++)
+		loadmodel->leafcontents[i] = (signed char) loadmodel->leafs[i].contents;
+
+	for (i=0, in=loadmodel->nodes ; i<loadmodel->numnodes ; i++, in++)
+	{
+		pl = in->plane;
+		out[i].dist = pl->dist;
+
+		for (j=0 ; j<2 ; j++)
+		{
+			child = in->children[j];
+
+			if (child->contents < 0)
+				out[i].children[j] = -1 - (int)((mleaf_t *)child - loadmodel->leafs);
+
+			else
+				out[i].children[j] = child - loadmodel->nodes;
+		}
+
+		t = pl->type & 7;
+		unit = (t < 3 && pl->normal[t] == 1.0f && pl->normal[(t+1)%3] == 0.0f
+			&& pl->normal[(t+2)%3] == 0.0f) ? 1 : 0;
+		out[i].typeplane = ((pl - loadmodel->planes) << 4) | (unit << 3) | t;
+	}
+
+	loadmodel->leafnodes = out;
+}
+
+static void Mod_MakeHullNodes (void)
+{
+	mhullnode_t	*shared;
+	int		j;
+
+	for (j=0 ; j<MAX_MAP_HULLS ; j++)
+		loadmodel->hulls[j].nodes = NULL;
+
+	if (COM_CheckParm ("-nohullnodes"))
+		return;
+
+	loadmodel->hulls[0].nodes = Mod_HullNodes (loadmodel->hulls[0].clipnodes, loadmodel->numnodes);
+	shared = Mod_HullNodes (loadmodel->clipnodes, loadmodel->numclipnodes);
+
+	for (j=1 ; j<MAX_MAP_HULLS ; j++)
+		if (loadmodel->hulls[j].clipnodes == loadmodel->clipnodes && loadmodel->hulls[j].planes == loadmodel->planes)
+			loadmodel->hulls[j].nodes = shared;
+}
+
+/*
+=================
 Mod_LoadMarksurfaces
 =================
 */
@@ -2012,6 +2143,8 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	Mod_LoadSubmodels (&header->lumps[LUMP_MODELS]);
 
 	Mod_MakeHull0 ();
+	Mod_MakeHullNodes ();	// RadeonGL
+	Mod_MakeLeafNodes ();	// RadeonGL
   
 	mod->numframes = 2;   // regular and alternate animation
   

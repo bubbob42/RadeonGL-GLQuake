@@ -112,6 +112,7 @@ glquake-data: | $(QOUT)
 	mkdir -p $(QOUT)/id1
 	cp -X "$(QUAKE_ID1)"/PAK0.PAK $(QOUT)/id1/pak0.pak
 	cp -X "$(QUAKE_ID1)"/PAK1.PAK $(QOUT)/id1/pak1.pak
+	cp -X $(QSRC)/playbench.txt $(QOUT)/id1/playbench.txt
 
 clean-glquake:
 	rm -rf $(QOBJ) $(QEXE)

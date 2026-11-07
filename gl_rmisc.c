@@ -524,6 +524,8 @@ extern qboolean r_skybox;
 R_NewMap
 ===============
 */
+void R_NewSurfVis (void);	/* RadeonGL: gl_rsurf.c */
+
 void R_NewMap (void)
 {
 	int		i;
@@ -544,6 +546,7 @@ void R_NewMap (void)
 	R_ClearParticles ();
 
 	GL_BuildLightmaps ();
+	R_NewSurfVis ();	// RadeonGL: the walk's visframes (gl_rsurf.c)
 
 	// identify sky texture
 	skytexturenum = -1;

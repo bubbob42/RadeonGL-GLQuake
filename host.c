@@ -793,9 +793,11 @@ Runs all active servers
 */
 
 extern void CL_RunParticles(void);
+extern void CL_PlayBenchFrame (void);	/* RadeonGL: cl_main.c, -playbench */
 
 void _Host_Frame (float time)
 {
+	static int	playbench = -1;	// RadeonGL: -playbench given
 	static double	time1 = 0;
 	static double	time2 = 0;
 	static double	time3 = 0;
@@ -804,8 +806,16 @@ void _Host_Frame (float time)
 	if (setjmp (host_abortserver) )
 		return;	    // something bad happened, or the server disconnected
 
+	/* RadeonGL, 2026-11-07: -playbench calls rand() once for each frame
+	 * that runs (below), not for each call: the calls the 72 fps limit
+	 * turns away would make the game follow real time, and a benchmark's
+	 * game must be the same in every run */
+	if (playbench < 0)
+		playbench = COM_CheckParm ("-playbench") ? 1 : 0;
+
 	// keep the random time dependent
-	rand ();
+	if (!playbench)
+		rand ();
   
 	// decide the simulation time
 	if (!Host_FilterTime (time))
@@ -818,6 +828,9 @@ void _Host_Frame (float time)
 
 		return;	    // don't run too fast, or packets will flood out
 	}
+
+	if (playbench)
+		rand ();
     
 	// get new key events
 	Sys_SendKeyEvents ();
@@ -930,6 +943,7 @@ void _Host_Frame (float time)
   
 	host_framecount++;
 	fps_count++;
+	CL_PlayBenchFrame ();
 }
 
 void Host_Frame (float time)
