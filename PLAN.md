@@ -69,6 +69,13 @@ RadeonGL with the static-arrays hint, check off, ABBA.
   U4 the Sound page (live restart), U5/U8 in RadeonGL (mode list, context
   from a mode, live resize), U6 the Video Modes page (live switch), U7 the
   2D scaled at high resolutions; and the lowlevel.library mouse-port fix.
+- 2026-11-07 afternoon, from the user's test of the Build in Work: the
+  "wrong columns" at 800 x 600 were RadeonGL's depth buffer (the R200 tiles
+  Z16 in 64-pixel tiles; a pitch of 800 shared two tile columns' depth) --
+  fixed in RadeonGL; the Video Modes page now offers 1680 x 1050 up to
+  1920 x 1440 (RadeonGL walks the display database); and a Vertical sync
+  switch on the page (vid_vsync, also `gl_videosync 0/1`), against the
+  tearing when turning. Tearing itself: to be judged by the user.
 - Night of 2026-11-06/07, speed (FINDINGS has each with its figures):
   aligned functions and loops, the dynamic-arrays hint, the lightmap chain
   only with gl_texsort, one matrix per model, the dynamic lights' slots

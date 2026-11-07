@@ -87,6 +87,9 @@ void VID_SetSizes (void);		// vid's sizes from the screen's
 void VID_SwitchMode (int w, int h);	// w x h live, from the end of this frame
 void VID_GetSize (int *w, int *h);	// the screen's size now
 int VID_ListModes (vidmode_t *modes, int max);	// the Video Modes page's list
+qboolean VID_GetVSync (void);			// vertical sync on (vid_vsync)
+extern char vid_switch_error[128];		// why the last live switch failed, "" = it did not
+void VID_SetVSync (qboolean on);		// ... switched now and saved
 #endif
 
 void  VID_Init (unsigned char *palette);

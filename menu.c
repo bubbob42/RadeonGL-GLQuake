@@ -1250,7 +1250,16 @@ void M_AdjustSliders (int dir)
     break;
 
   case 11:  // mouse look (2026-11-06): as a lasting +mlook, saved
-    Cvar_SetValue ("freelook", !freelook.value);
+    /* 2026-11-07: the box shows +mlook as well (console, bound key); off
+     * turns both off, as a console -mlook does */
+    if (IN_MLOOK_ON())
+    {
+      Cvar_SetValue ("freelook", 0);
+      in_mlook.down[0] = in_mlook.down[1] = 0;
+      in_mlook.state = 4;	// impulse up
+    }
+    else
+      Cvar_SetValue ("freelook", 1);
     if (!IN_MLOOK_ON() && lookspring.value)
       V_StartPitchDrift ();	// as releasing a +mlook key does
     break;
@@ -1386,7 +1395,7 @@ void M_Options_Draw (void)
   M_DrawCheckbox (220, 112, m_pitch.value < 0);
 
   M_Print (16, 120, "            Mouse Look");	// 2026-11-06
-  M_DrawCheckbox (220, 120, freelook.value);
+  M_DrawCheckbox (220, 120, IN_MLOOK_ON());
 
   M_Print (16, 128, "            Lookspring");
   M_DrawCheckbox (220, 128, lookspring.value);
@@ -1962,6 +1971,9 @@ Enter switches live (VID_SwitchMode: the library opens the new screen and
 keeps the textures) and saves the choice (vid_width, vid_height,
 vid_modeid) for the next start. A library that cannot switch keeps the size
 and says so in the console; the saved choice applies at the next start.
+Below the modes (2026-11-07): Vertical sync, on or off with Enter, Left or
+Right (VID_SetVSync, saved as vid_vsync); the cursor reaches it with Up and
+Down.
 */
 
 #define VIDEO_MAXMODES	40
@@ -1969,6 +1981,39 @@ and says so in the console; the saved choice applies at the next start.
 
 static vidmode_t	video_modes[VIDEO_MAXMODES];
 static int		video_nummodes, video_cursor;
+
+/* white text in lines of up to 34 characters, broken at spaces (the
+ * menu's 320 pixels less the margins) */
+static void Video_PrintWrapped (int x, int y, const char *s)
+{
+	char	line[36];
+	int	n, cut;
+
+	while (*s)
+	{
+		while (*s == ' ')
+			s++;
+
+		n = strlen (s);
+
+		if (n > 34)
+		{
+			for (cut = 34; cut > 0 && s[cut] != ' '; cut--)
+				;
+
+			if (cut == 0)
+				cut = 34;
+		}
+		else
+			cut = n;
+
+		memcpy (line, s, cut);
+		line[cut] = 0;
+		M_PrintWhite (x, y, line);
+		s += cut;
+		y += 8;
+	}
+}
 
 static int Video_Rows (void)
 {
@@ -1982,6 +2027,7 @@ void M_Menu_Video_f (void)
 	key_dest = key_menu;
 	m_state = m_video;
 	m_entersound = true;
+	vid_switch_error[0] = 0;	// an old refusal is no news
 
 	video_nummodes = VID_ListModes (video_modes, VIDEO_MAXMODES);
 	VID_GetSize (&w, &h);
@@ -2021,10 +2067,30 @@ void M_Video_Draw (void)
 			M_DrawCharacter (x - 12, y, 12 + ((int)(realtime * 4) & 1));
 	}
 
-	y = 36 + rows * 8 + 12;
+	// the vertical sync, the item after the modes
+	y = 36 + rows * 8 + 8;
+	M_Print (24, y, "Vertical sync");
+	M_Print (24 + 15 * 8, y, VID_GetVSync () ? "on" : "off");
+
+	if (video_cursor == video_nummodes)
+		M_DrawCharacter (24 - 12, y, 12 + ((int)(realtime * 4) & 1));
+
+	y += 16;
 	sprintf (v, "Running: %dx%d, 16 bit", w, h);
 	M_PrintWhite (48, y, v);
-	M_Print (48, y + 16, "Enter switches the mode");
+
+	// 2026-11-07: a refused switch says why, in place of the help
+	if (vid_switch_error[0])
+	{
+		Video_PrintWrapped (24, y + 16, vid_switch_error);
+		return;
+	}
+
+	if (video_cursor == video_nummodes)
+		M_Print (48, y + 16, "Enter turns it on or off");
+	else
+		M_Print (48, y + 16, "Enter switches the mode");
+
 	M_Print (48, y + 24, "Esc goes back");
 }
 
@@ -2044,18 +2110,26 @@ void M_Video_Key (int k)
 			M_Menu_Options_f ();
 			break;
 
+		// the cursor: the modes, then the vertical sync (video_nummodes)
 		case K_UPARROW:
 			S_LocalSound ("misc/menu1.wav");
-			video_cursor = (video_cursor + video_nummodes - 1) % video_nummodes;
+			video_cursor = (video_cursor + video_nummodes) % (video_nummodes + 1);
 			break;
 
 		case K_DOWNARROW:
 			S_LocalSound ("misc/menu1.wav");
-			video_cursor = (video_cursor + 1) % video_nummodes;
+			video_cursor = (video_cursor + 1) % (video_nummodes + 1);
 			break;
 
 		case K_LEFTARROW:
 			S_LocalSound ("misc/menu1.wav");
+
+			if (video_cursor == video_nummodes)
+			{
+				VID_SetVSync (!VID_GetVSync ());
+				break;
+			}
+
 			video_cursor -= rows;
 
 			if (video_cursor < 0)
@@ -2067,6 +2141,13 @@ void M_Video_Key (int k)
 
 		case K_RIGHTARROW:
 			S_LocalSound ("misc/menu1.wav");
+
+			if (video_cursor == video_nummodes)
+			{
+				VID_SetVSync (!VID_GetVSync ());
+				break;
+			}
+
 			video_cursor += rows;
 
 			if (video_cursor >= video_nummodes)
@@ -2075,6 +2156,13 @@ void M_Video_Key (int k)
 
 		case K_ENTER:
 			S_LocalSound ("misc/menu2.wav");
+
+			if (video_cursor == video_nummodes)
+			{
+				VID_SetVSync (!VID_GetVSync ());
+				break;
+			}
+
 			VID_SwitchMode (video_modes[video_cursor].width, video_modes[video_cursor].height);
 			sprintf (v, "%d", video_modes[video_cursor].width);
 			Cvar_Set ("vid_width", v);
@@ -3624,7 +3712,7 @@ void M_Init (void)
 	Cmd_AddCommand ("menu_options", M_Menu_Options_f);
 	Cmd_AddCommand ("menu_detail", M_Menu_Detail_f);
 	Cmd_AddCommand ("menu_keys", M_Menu_Keys_f);
-	//Cmd_AddCommand ("menu_video", M_Menu_Video_f);
+	Cmd_AddCommand ("menu_video", M_Menu_Video_f);	// 2026-11-07: the Video Modes page (bindable, and for tests)
 	Cmd_AddCommand ("help", M_Menu_Help_f);
 	Cmd_AddCommand ("menu_quit", M_Menu_Quit_f);
 }

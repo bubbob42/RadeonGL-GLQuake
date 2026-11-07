@@ -187,6 +187,7 @@ cvar_t	vid_bpp = {"vid_bpp", "16", true};
 cvar_t	vid_buffers = {"vid_buffers", "3", true};
 cvar_t	vid_modeid = {"vid_modeid", "0", true};
 cvar_t	vid_conscale = {"vid_conscale", "0", true};	// 2D scale: 0 automatic, else 1, 2, 3 ...
+cvar_t	vid_vsync = {"vid_vsync", "1", true};		// 2026-11-07: vertical sync (the page's switch), on by default
 
 void VID_RegisterCvars (void)
 {
@@ -196,6 +197,7 @@ void VID_RegisterCvars (void)
 	Cvar_RegisterVariable (&vid_buffers);
 	Cvar_RegisterVariable (&vid_modeid);
 	Cvar_RegisterVariable (&vid_conscale);
+	Cvar_RegisterVariable (&vid_vsync);
 }
 
 //cvar_t _windowed_mouse = {"_windowed_mouse", "1", true}; 
@@ -205,6 +207,14 @@ const char *gl_vendor;
 const char *gl_renderer;
 const char *gl_version;
 const char *gl_extensions;
+
+/* 2026-11-07: why the last live switch failed ("" = it did not), for the
+ * Video Modes page (menu.c): a refusal only went to the console, which the
+ * menu hides. RadeonGL's extension GL_RGL_resize_error gives the reason. */
+char vid_switch_error[128];
+#ifndef GL_RGL_RESIZE_ERROR
+#define GL_RGL_RESIZE_ERROR	0x52474c05
+#endif
 
 static float vid_gamma = 1.0;
 
@@ -709,10 +719,22 @@ void GL_EndRendering (void)
 		{
 			scr_width = pending_w;
 			scr_height = pending_h;
+			vid_switch_error[0] = 0;
 			Con_Printf("Video mode %dx%d\n", scr_width, scr_height);
 		}
 		else
-			Con_Printf("Video mode %dx%d: the library kept %dx%d\n", pending_w, pending_h, ow, oh);
+		{
+			const char	*why = NULL;
+
+			if (gl_extensions && strstr (gl_extensions, "GL_RGL_resize_error"))
+				why = (const char *) glGetString (GL_RGL_RESIZE_ERROR);
+
+			if (why == NULL || why[0] == 0)
+				why = "the library kept the old size";
+
+			sprintf (vid_switch_error, "%dx%d did not open: %.90s", pending_w, pending_h, why);
+			Con_Printf("Video mode %s (still %dx%d)\n", vid_switch_error, ow, oh);
+		}
 
 		VID_SetSizes ();
 
@@ -799,8 +821,23 @@ void ChangeVideoSync_f (void)
 		return;
 	}
 
-	gl_videosync = Q_atoi(Cmd_Argv(1)); 
-	mglEnableSync(gl_videosync);
+	VID_SetVSync (Q_atoi(Cmd_Argv(1)) != 0);
+}
+
+/* 2026-11-07: vertical sync, the Video Modes page's switch. The library
+ * (RadeonGL 0.7 and up) holds each present until the beam has left the
+ * screen: no tearing when turning, at the price of waiting for the beam.
+ * Saved as vid_vsync; vid_buffers 2 turns it on as well (MiniGL's custom). */
+qboolean VID_GetVSync (void)
+{
+	return gl_videosync;
+}
+
+void VID_SetVSync (qboolean on)
+{
+	gl_videosync = on;
+	Cvar_SetValue ("vid_vsync", on ? 1 : 0);
+	mglEnableSync (gl_videosync);
 }
 
 void ChangeDithering_f (void)
@@ -1152,7 +1189,7 @@ void VID_Init(unsigned char *palette)
 	if (numb > 3)
 		numb = 3;   
   
-	if (numb == 2)
+	if (numb == 2 || vid_vsync.value)
 		gl_videosync = true;
 
 	else
