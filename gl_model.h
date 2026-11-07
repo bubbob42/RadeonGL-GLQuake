@@ -200,6 +200,12 @@ typedef struct mnode_s
 
 	unsigned int	firstsurface;	// bsp2 -Cowcat 2019
 	unsigned int	numsurfaces;	// 
+
+	/* RadeonGL, 2026-11-07: the plane's dist and type in the node
+	 * (Mod_NodePlanes), so the world walk's side test reads no plane for
+	 * an axial one -- a cache miss a node on the A4000D */
+	float		pdist;
+	int		ptype;
   
 } mnode_t;
 

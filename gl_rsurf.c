@@ -3179,6 +3179,7 @@ typedef struct
 } walkentry_t;
 
 static walkentry_t	walkstack[WALK_STACK];
+static int		walknodeplane = 1;	// -nonodeplane: the plane through node->plane (an A/B)
 
 static void R_WalkWorld (mnode_t *root, int rootflags)
 {
@@ -3284,7 +3285,11 @@ static void R_WalkWorld (mnode_t *root, int rootflags)
 		}
 
 		// node is just a decision point: front side first, then this one
-		dot = PlaneDiff(modelorg, node->plane);
+		if (walknodeplane)	// RadeonGL: the plane's dist and type in the node
+			dot = (node->ptype < 3) ? modelorg[node->ptype] - node->pdist
+				: DotProduct (modelorg, node->plane->normal) - node->pdist;
+		else
+			dot = PlaneDiff(modelorg, node->plane);
 		side = (dot >= 0) ? 0 : 1;
 
 		if (sp + 2 > WALK_STACK)
@@ -3316,7 +3321,10 @@ static int	walkrecursive = -1;
 static void R_WorldWalk (mnode_t *root, int clipflags)
 {
 	if (walkrecursive < 0)
+	{
 		walkrecursive = COM_CheckParm ("-recursivewalk") ? 1 : 0;
+		walknodeplane = COM_CheckParm ("-nonodeplane") ? 0 : 1;
+	}
 
 	if (walkrecursive)
 		R_RecursiveWorldNode (root, clipflags);

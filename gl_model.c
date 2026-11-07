@@ -1889,6 +1889,26 @@ static void Mod_MakeLeafNodes (void)
 	loadmodel->leafnodes = out;
 }
 
+/*
+=================
+Mod_NodePlanes (RadeonGL, 2026-11-07)
+
+Every node's plane dist and type copied into the node (mnode_t), for every
+loader variant: the world walk then reads no plane for an axial one.
+=================
+*/
+static void Mod_NodePlanes (void)
+{
+	mnode_t	*n;
+	int	i;
+
+	for (i=0, n=loadmodel->nodes ; i<loadmodel->numnodes ; i++, n++)
+	{
+		n->pdist = n->plane->dist;
+		n->ptype = n->plane->type;
+	}
+}
+
 static void Mod_MakeHullNodes (void)
 {
 	mhullnode_t	*shared;
@@ -2144,6 +2164,7 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 
 	Mod_MakeHull0 ();
 	Mod_MakeHullNodes ();	// RadeonGL
+	Mod_NodePlanes ();	// RadeonGL
 	Mod_MakeLeafNodes ();	// RadeonGL
   
 	mod->numframes = 2;   // regular and alternate animation

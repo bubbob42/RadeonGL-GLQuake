@@ -369,6 +369,11 @@ about 5%: demo1 31.1 fps against 32.9).
   29.0 s (+1.0%); play 47.32 -> 48.64 fps with the server's compact walks
   (+2.4% of it before: about +0.2% more); frame 400 of demo1, frame 500 of
   the play and the checksum unchanged.
+- **The plane's dist and type in the node** (`mnode_t.pdist/ptype`,
+  `Mod_NodePlanes`; `-nonodeplane`): the world walk's side test reads no
+  plane for an axial one (`PlaneDiff`'s shortcut, the same arithmetic).
+  demo1 29.0 -> 28.9 s (+0.3%), play 48.77 -> 48.94 fps (+0.35%): small,
+  the same way in every pair; `mnode_t` 56 -> 64 bytes.
 - **Entities out of sight skipped sooner** (`SV_WriteEntitiesToClient`,
   sv_main.c; `-nopvsfirst`): the PV leaf test now comes before the model
   test. The leaf test reads the edict's first lines; the model test reads
