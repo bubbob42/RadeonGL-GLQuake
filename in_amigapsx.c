@@ -375,7 +375,7 @@ void RawValuePointerPsx(usercmd_t *cmd)
         y<<=1;
         x=x*sensitivity.value;
         y=y*sensitivity.value;
-  	if ( (in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1) ))
+  	if ( (in_strafe.state & 1) || (lookstrafe.value && IN_MLOOK_ON() ))
         cmd->sidemove += m_side.value * x;
 	else cl.viewangles[YAW] -= m_yaw.value * x;
 	
@@ -391,7 +391,7 @@ void RawValuePointerPsx(usercmd_t *cmd)
         y<<=1;
         x=x*sensitivity.value;
         y=y*sensitivity.value;
-        if ( (in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1) ))
+        if ( (in_strafe.state & 1) || (lookstrafe.value && IN_MLOOK_ON() ))
         cmd->sidemove += m_side.value * x;
 	else cl.viewangles[YAW] -= m_yaw.value * x;
 	
@@ -442,13 +442,13 @@ void RawValuePointerPsx(usercmd_t *cmd)
       y<<=2;
       x=x*sensitivity.value;
       y=y*sensitivity.value;
-      if ( (in_strafe.state & 1) || (lookstrafe.value && (in_mlook.state & 1) ))
+      if ( (in_strafe.state & 1) || (lookstrafe.value && IN_MLOOK_ON() ))
       cmd->sidemove += m_side.value * x;
       else cl.viewangles[YAW] -= m_yaw.value * x;
 	
-      if (in_mlook.state & 1) V_StopPitchDrift ();
+      if (IN_MLOOK_ON()) V_StopPitchDrift ();
 	 
-      if ( (in_mlook.state & 1) && !(in_strafe.state & 1)) 
+      if ( IN_MLOOK_ON() && !(in_strafe.state & 1)) 
       {
         cl.viewangles[PITCH] += m_pitch.value * y;
         if (cl.viewangles[PITCH] > 80) cl.viewangles[PITCH] = 80;
@@ -489,7 +489,7 @@ void IN_PsxMove (usercmd_t *cmd)
   cmd->forwardmove += (fAxisValue * joy_forwardsensitivity.value) * speed * cl_forwardspeed.value;
 
 #if 0
-  if ((joy_advanced.value == 0.0) && (in_mlook.state & 1))
+  if ((joy_advanced.value == 0.0) && IN_MLOOK_ON())
   {
     if (fabs(fAxisValue) > joy_pitchthreshold.value)
     {

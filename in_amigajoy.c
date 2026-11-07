@@ -108,16 +108,32 @@ int StringToType(char *type)
 	return SJA_TYPE_AUTOSENSE;
 } 
 
+/* 2026-11-06: the mouse port (0) is left alone unless joy_force0 asks for a
+ * joystick or game controller there. lowlevel.library's autosense on the
+ * mouse port clocks the left button's line as if a CD32 pad were there,
+ * and the port stays in autosense after GLQuake: holding the left button
+ * kept releasing (reported by midwan). GLQuake set all four ports to
+ * autosense, probed port 0 first, and with no joystick found read port 0
+ * every frame (Port stayed 0). Now: port 0 only on request, reads only
+ * when a joystick was found, and port 0 back to mouse mode on exit. */
+static qboolean port0_joy;	// joy_force0 is GAMECTRL or JOYSTICK
+static qboolean joy_found;	// a joystick or pad on Port: IN_JoyMove reads it
+
+static int FirstJoyPort(void)
+{
+	return port0_joy ? 0 : 1;
+}
+
 void ResetJoystick(void)
-{ 
+{
 	int Port;
 
-	for (Port = 0; Port < 4; ++Port)
+	for (Port = FirstJoyPort(); Port < 4; ++Port)
 	{
 		JoyState[Port] = (ULONG)JP_TYPE_NOTAVAIL;
 		SetJoyPortAttrs(Port, SJA_Type, SJA_TYPE_AUTOSENSE, TAG_DONE);
 	}
-} 
+}
 
 
 void IN_InitJoy()
@@ -126,21 +142,27 @@ void IN_InitJoy()
   cvar_t *cv;
   char strValue[256];
   float f;
+  ULONG t0;
+
+  joy_found = false;
 
   f = Cvar_VariableValue("in_initjoy");
   if (!Cvar_FindVar("in_initjoy")) f=1.0;
   if ( !f) return;
-  
+
   if (joy_onlypsx.value) return;
-  
+
   stick=1;
+
+  t0 = StringToType(Cvar_VariableString("joy_force0"));
+  port0_joy = (t0 == SJA_TYPE_GAMECTLR || t0 == SJA_TYPE_JOYSTK);
 
   numdevs=-1;
   if (LowLevelBase)
   {
-    int MyPort=0;
+    int MyPort;
     ResetJoystick();
-    for (MyPort=0;MyPort<4;MyPort++)
+    for (MyPort=FirstJoyPort();MyPort<4;MyPort++)
     {
       JoyState[MyPort] = (int)(ReadJoyPort(MyPort));
       if ((JoyState[MyPort]!=JP_TYPE_NOTAVAIL)&&(!(JoyState[MyPort]&JP_TYPE_MOUSE)))
@@ -157,11 +179,17 @@ void IN_InitJoy()
     return;
   else Port=numdevs;
 
+  joy_found = true;
+
   Con_Printf ("\nAmiga joystick available\n");
-  strcpy(strValue,Cvar_VariableString("joy_force0"));
-  if (strlen(strValue)==0) strcpy(strValue,"AUTOSENSE");
-  SetJoyPortAttrs(0, SJA_Type,   StringToType(strValue), TAG_DONE);
-  Con_Printf("Joystick Port 0 is %s\n", strValue);
+  if (port0_joy)
+  {
+    strcpy(strValue,Cvar_VariableString("joy_force0"));
+    SetJoyPortAttrs(0, SJA_Type,   StringToType(strValue), TAG_DONE);
+    Con_Printf("Joystick Port 0 is %s\n", strValue);
+  }
+  else
+    Con_Printf("Port 0 is the mouse (joy_force0 GAMECTRL or JOYSTICK for a pad there)\n");
 
   strcpy(strValue,Cvar_VariableString("joy_force1"));
   if (strlen(strValue)==0) strcpy(strValue,"AUTOSENSE");
@@ -177,17 +205,37 @@ void IN_InitJoy()
   if (strlen(strValue)==0) strcpy(strValue,"AUTOSENSE");
   SetJoyPortAttrs(3, SJA_Type,   StringToType(strValue), TAG_DONE);
   Con_Printf("Joystick Port 3 is %s\n", strValue);
+
+  /* 2026-11-06: a port that reads as a plain joystick (an empty one does
+   * too) stays a joystick: in autosense lowlevel.library looks for a CD32
+   * pad on every read, clocking the port through dozens of CIA accesses --
+   * MEASURED on the A4000D, the frame-by-frame read cost 0.7% in demo1. A
+   * pad is found as a game controller at the start and read as one. */
+  sprintf(strValue, "joy_force%d", Port);
+  if ((JoyState[Port] & JP_TYPE_MASK) == JP_TYPE_JOYSTK
+      && StringToType(Cvar_VariableString(strValue)) == SJA_TYPE_AUTOSENSE)
+  {
+    SetJoyPortAttrs(Port, SJA_Type, SJA_TYPE_JOYSTK, TAG_DONE);
+    Con_Printf("Port %d: a joystick, read as one (joy_force%d GAMECTRL for a pad)\n", Port, Port);
+  }
+  else if ((JoyState[Port] & JP_TYPE_MASK) == JP_TYPE_GAMECTLR)
+    Con_Printf("Port %d: a game controller\n", Port);
 }
  
-void IN_ShutdownJoystick(void) 
-{ 
+void IN_ShutdownJoystick(void)
+{
   if (LowLevelBase)
   {
     if (!ack1) SystemControl(SCON_RemCreateKeys,1,TAG_END);
     if (!ack0) SystemControl(SCON_RemCreateKeys,0,TAG_END);
     ResetJoystick();
+    /* the mouse port back to mouse mode (see port0_joy): also repairs an
+     * autosense left there by an earlier GLQuake in this boot */
+    if (!port0_joy)
+      SetJoyPortAttrs(0, SJA_Type, SJA_TYPE_MOUSE, TAG_DONE);
   }
-} 
+  joy_found = false;
+}
 
 void RawValuePointer()
 { 
@@ -290,7 +338,8 @@ void IN_JoyMove (usercmd_t *cmd)
  
   if (!LowLevelBase) return;
   if (joy_onlypsx.value) return;
-  
+  if (!joy_found) return;	// 2026-11-06: no joystick, no port read (was port 0)
+
   if (in_speed.state & 1) speed = cl_movespeedkey.value;
   else speed = 1;
   aspeed = speed * host_frametime;
@@ -302,7 +351,7 @@ void IN_JoyMove (usercmd_t *cmd)
  
   cmd->forwardmove += (fAxisValue * joy_forwardsensitivity.value) * speed * cl_forwardspeed.value;
 #if 0
-  if ((joy_advanced.value == 0.0) && (in_mlook.state & 1))
+  if ((joy_advanced.value == 0.0) && IN_MLOOK_ON())
   {
     if (fabs(fAxisValue) > joy_pitchthreshold.value)
     {

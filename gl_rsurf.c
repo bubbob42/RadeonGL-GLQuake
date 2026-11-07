@@ -172,7 +172,8 @@ R_AddDynamicLights
 
 void R_AddDynamicLights (msurface_t *surf)
 {
-	int		lnum;
+	int		lnum, w;
+	unsigned int	bits;
 	int		sd, td;
 	float		dist, rad, minlight;
 	vec3_t		impact, local;
@@ -194,14 +195,18 @@ void R_AddDynamicLights (msurface_t *surf)
 	tmax = (surf->extents[1]>>4)+1;
 	tex = surf->texinfo;
 	
-	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
+	/* 2026-11-07: the set bits only, word by word, ending at a word's last
+	 * one -- the lights in the same order as the 64-step loop that tested
+	 * every bit for every lit surface (PROFILED, A4000D demo1: the bit test
+	 * was R_AddDynamicLights' hottest spot) */
+	for (w = 0 ; w < ((MAX_DLIGHTS + 31) >> 5) ; w++)
+	for (bits = surf->dlightbits[w], lnum = w << 5 ; bits ; bits >>= 1, lnum++)
 	{
 		//if(cl_dlights[lnum].die < cl.time);
 			//continue; // test 2019 - Cowcat (no dynamic light with this?)
 
-		//if ( !(surf->dlightbits & (1<<lnum) ) ) continue;	// not lit by this light
-		if ( !(surf->dlightbits[lnum >> 5] & (1U << (lnum & 31))) ) // extended lights - Cowcat 2019
-			continue; 
+		if (!(bits & 1))
+			continue;
 
 		rad = cl_dlights[lnum].radius;
 		dist = DotProduct (cl_dlights[lnum].origin, surf->plane->normal) - surf->plane->dist;
@@ -1573,8 +1578,15 @@ void R_RenderBrushPoly (msurface_t *fa)
 
 	// add the poly to the proper lightmap chain
 
-	fa->polys->chain = lightmap_polys[fa->lightmaptexturenum];
-	lightmap_polys[fa->lightmaptexturenum] = fa->polys;
+	/* 2026-11-07: the chain is only R_BlendLightmaps', which returns at once
+	 * with gl_texsort 0 (every multitexture path: gl_rmisc.c) -- linking
+	 * every visible surface's poly into it was a write into another
+	 * structure a surface, a frame, for nothing */
+	if (gl_texsort.value)
+	{
+		fa->polys->chain = lightmap_polys[fa->lightmaptexturenum];
+		lightmap_polys[fa->lightmaptexturenum] = fa->polys;
+	}
 
 	// check for lightmap modification
 	for (maps = 0 ; maps < MAXLIGHTMAPS && fa->styles[maps] != 255 ; maps++)
@@ -1654,8 +1666,15 @@ static void R_RenderDynamicLightmaps (msurface_t *fa)
 	if (fa->flags & ( SURF_DRAWSKY | SURF_DRAWTURB) )
 		return;
 
-	fa->polys->chain = lightmap_polys[fa->lightmaptexturenum];
-	lightmap_polys[fa->lightmaptexturenum] = fa->polys;
+	/* 2026-11-07: the chain is only R_BlendLightmaps', which returns at once
+	 * with gl_texsort 0 (every multitexture path: gl_rmisc.c) -- linking
+	 * every visible surface's poly into it was a write into another
+	 * structure a surface, a frame, for nothing */
+	if (gl_texsort.value)
+	{
+		fa->polys->chain = lightmap_polys[fa->lightmaptexturenum];
+		lightmap_polys[fa->lightmaptexturenum] = fa->polys;
+	}
 
 	// check for lightmap modification
 	for (maps = 0 ; maps < MAXLIGHTMAPS && fa->styles[maps] != 255 ; maps++) 
@@ -2678,6 +2697,8 @@ R_DrawBrushModel
 extern qboolean R_CullSphere (vec3_t centre, float radius); // gl_rmain.c
 extern void R_PushDlights2(struct mnode_s *headnode);
 
+static int	brush_translate = -1;
+
 void R_DrawBrushModel (entity_t *e)
 {
 	int		i;
@@ -2794,7 +2815,14 @@ void R_DrawBrushModel (entity_t *e)
 	
 	#else // Cowcat 2017
 
-	//if(e->origin[0] || e->origin[1] || e->origin[2])
+	/* 2026-11-07: Cowcat's test back -- a brush entity at the origin (most
+	 * func_walls, doors at rest in place) leaves the matrix as it is: no
+	 * new version, so RadeonGL sends no new matrix (17 longwords and a 4x4
+	 * multiply) for it. -brushtranslate: always, as before. */
+	if (brush_translate < 0)
+		brush_translate = COM_CheckParm ("-brushtranslate") != 0;
+
+	if (brush_translate || e->origin[0] || e->origin[1] || e->origin[2])
 	{
 		//Con_Printf("translate\n");
 		glTranslatef (e->origin[0],  e->origin[1],  e->origin[2]);

@@ -1230,6 +1230,13 @@ void Host_Init (quakeparms_t *parms)
 		/* Before the exec config.cfg below, so a saved Brightness is loaded
 		 * before VID_Init runs Check_Gamma. */
 		Cvar_RegisterVariable (&gl_gamma);
+		/* 2026-11-06: Mouse Look (cl_input.c) here too, not in CL_InitInput:
+		 * there a saved freelook gave "Unknown command" in this early exec */
+		Cvar_RegisterVariable (&freelook);
+		/* 2026-11-06: the Video Modes and Sound pages' settings, read by
+		 * VID_Init and S_Init: before this early exec too */
+		VID_RegisterCvars ();
+		SND_RegisterCvars ();
 
 		//Cvar_RegisterVariable (&r_lerpmove);	// johnfitz - not used
 		//Cvar_RegisterVariable (&r_lerpmodels);//

@@ -139,6 +139,7 @@ void SNDDMA_ShutdownAHI(void)
 
 		CloseDevice((struct IORequest *)AHIio);
 		AHIDevice = -1;
+		AHIBase = NULL;		// 2026-11-06: SND_AHIListModes tests it
 	}
 
 	if (AHIio)
@@ -170,7 +171,7 @@ qboolean SNDDMA_InitAHI(void)
 	info.cinfo.ahieci_Func = &EffHook;
 	info.cinfo.ahie_Effect = AHIET_CHANNELINFO;
 
-	if ( (i = COM_CheckParm("-audspeed")) )
+	if ( snd_use_cmdline && (i = COM_CheckParm("-audspeed")) )
 		speed = Q_atoi(com_argv[i+1]);
 
 	else
@@ -238,11 +239,30 @@ qboolean SNDDMA_InitAHI(void)
 	IAHI = (struct AHIIFace *)GetInterface((struct Library *)AHIBase,"main",1,0);
 	#endif
 
-	if ((actrl = AHI_AllocAudio(AHIA_AudioID, AHI_DEFAULT_ID,
+	/* 2026-11-06: the Sound page's AHI mode (snd_ahimode), else AHI's
+	 * default; a saved mode this machine does not have falls back */
+	mode = (ULONG)strtoul(snd_ahimode.string, NULL, 0);
+
+	if (mode == 0 || mode == AHI_INVALID_ID)
+		mode = AHI_DEFAULT_ID;
+
+	actrl = AHI_AllocAudio(AHIA_AudioID, mode,
 		AHIA_MixFreq, speed,
 		AHIA_Channels, 1,
 		AHIA_Sounds, 1,
-		TAG_END)) == NULL)
+		TAG_END);
+
+	if (actrl == NULL && mode != AHI_DEFAULT_ID)
+	{
+		Con_Printf("AHI mode $%08lx not available, AHI's default\n", mode);
+		actrl = AHI_AllocAudio(AHIA_AudioID, AHI_DEFAULT_ID,
+			AHIA_MixFreq, speed,
+			AHIA_Channels, 1,
+			AHIA_Sounds, 1,
+			TAG_END);
+	}
+
+	if (actrl == NULL)
 	{
 		Con_Printf("Can't allocate audio\n");
 		return false;
@@ -308,7 +328,7 @@ qboolean SNDDMA_InitAHI(void)
 
 	Con_Printf("AHI audio initialized\n");
 	Con_Printf("AHI mode: %s (%08x)\n", name, mode);
-	Con_Printf("Output: %ibit %s\n", ahibits, ahichannels == 2 ? "stereo" : "mono");
+	Con_Printf("Output: %ibit %s, %i Hz (AHI mixes at %lu Hz)\n", ahibits, ahichannels == 2 ? "stereo" : "mono", speed, (unsigned long)mixfreq);
 
 	AHI_Play(actrl,
 		AHIP_BeginChannel,	0,
@@ -331,3 +351,79 @@ int SNDDMA_GetDMAPosAHI(void)
 }
 
 
+
+
+/*
+==================
+SND_AHIListModes
+
+2026-11-06, the Sound page: AHI's real-time audio modes (the file-saving
+ones are left out), id and name, at most max. ahi.device is opened here
+for the list when the sound does not run on it; 0 when it is not there.
+==================
+*/
+int SND_AHIListModes (unsigned long *ids, char (*names)[SND_AHINAME], int max)
+{
+	struct MsgPort		*mp;
+	struct AHIRequest	*io;
+	ULONG			id, realtime;
+	int			n;
+	BOOL			ours;
+
+	n = 0;
+	mp = NULL;
+	io = NULL;
+	ours = (AHIBase == NULL);
+
+	if (ours)
+	{
+		if ( (mp = CreateMsgPort()) == NULL )
+			return 0;
+
+		if ( (io = (struct AHIRequest *)CreateIORequest(mp, sizeof(struct AHIRequest))) == NULL )
+		{
+			DeleteMsgPort(mp);
+			return 0;
+		}
+
+		io->ahir_Version = 4;
+
+		if (OpenDevice("ahi.device", AHI_NO_UNIT, (struct IORequest *)io, 0) != 0)
+		{
+			DeleteIORequest((struct IORequest *)io);
+			DeleteMsgPort(mp);
+			return 0;
+		}
+
+		AHIBase = (struct Library *)io->ahir_Std.io_Device;
+	}
+
+	for (id = AHI_NextAudioID(AHI_INVALID_ID); id != AHI_INVALID_ID && n < max; id = AHI_NextAudioID(id))
+	{
+		realtime = TRUE;
+		names[n][0] = 0;
+
+		AHI_GetAudioAttrs(id, NULL,
+			AHIDB_Realtime,		(ULONG)&realtime,
+			AHIDB_BufferLen,	SND_AHINAME,
+			AHIDB_Name,		(ULONG)names[n],
+			TAG_END);
+
+		if (!realtime)
+			continue;
+
+		names[n][SND_AHINAME - 1] = 0;
+		ids[n] = id;
+		n++;
+	}
+
+	if (ours)
+	{
+		CloseDevice((struct IORequest *)io);
+		DeleteIORequest((struct IORequest *)io);
+		DeleteMsgPort(mp);
+		AHIBase = NULL;
+	}
+
+	return n;
+}

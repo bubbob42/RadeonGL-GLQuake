@@ -2757,6 +2757,22 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 
 	memcpy (mod->cache.data, pheader, total);
 
+	/* 2026-11-07: RadeonGL keys the models' index lists by their addresses
+	 * (GL_RGL_STATIC_INDICES_HINT in GL_DrawAliasBatch); a model put (back)
+	 * in the cache may sit where another one was, so every address key is
+	 * forgotten (at a level's start that costs nothing; later only when
+	 * the cache had dropped a model, and then the world uploads once) */
+	{
+		extern const char *gl_extensions;	// gl_vidamiga.c
+
+		extern void R_ClearModelFillCache (void);	// gl_rmain.c
+
+		if (gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays"))
+			glHint (0x52474c02, GL_FASTEST);	// GL_RGL_STATIC_INDICES_HINT
+
+		R_ClearModelFillCache ();	// its fills name models by their headers
+	}
+
 	Hunk_FreeToLowMark (start);
 }
 

@@ -60,6 +60,9 @@ static struct Interrupt *OldInt;
 static UWORD OldINTENA = 0;
 static UWORD aud_intflag;
 static UBYTE saved_filter;
+/* 2026-11-06: the vector AudioInt went into (7 + the channel): the shutdown
+ * restored vector 7 always, wrong when audio.device gave channels 2/3 */
+static int aud_vector = -1;
 
 #if !defined(__PPC__)
 /* 2026-11-06 (RadeonGL, the A4000D): the audio interrupt
@@ -160,8 +163,8 @@ void SNDDMA_ShutdownPaula(void)
     		custom->intena = INTF_SETCLR | OldINTENA;
   	}
 
-  	if (OldInt)
-    		SetIntVector(7,OldInt);
+  	if (aud_vector >= 0)
+    		SetIntVector(aud_vector,OldInt);	// also when it was NULL
 
   	if (audio_dev == 0)
 	{
@@ -212,6 +215,21 @@ void SNDDMA_ShutdownPaula(void)
 		FreeMem(dmabuf, NSAMPLES);
   		#endif
 #endif
+
+	/* 2026-11-06: back to the state before SNDDMA_InitPaula, so the Sound
+	 * page can stop and start the sound again (and a second shutdown frees
+	 * nothing twice) */
+	audio2 = NULL;
+	audio1 = NULL;
+	audioport2 = NULL;
+	audioport1 = NULL;
+	shm = NULL;
+	IntData.aud_start_time = NULL;
+	dmabuf = NULL;
+	audio_dev = -1;
+	OldINTENA = 0;
+	OldInt = NULL;
+	aud_vector = -1;
 }
 
 
@@ -224,7 +242,7 @@ qboolean SNDDMA_InitPaula(void)
   	int channelnr, swapchannels, i;
 
   	/* evaluate parameters */
-  	if ( (i = COM_CheckParm("-audspeed")) )
+  	if ( snd_use_cmdline && (i = COM_CheckParm("-audspeed")) )
 	{
     		period = (UWORD)(sysclock / Q_atoi(com_argv[i+1]));
   	}
@@ -232,7 +250,7 @@ qboolean SNDDMA_InitPaula(void)
   	else
     		period = (UWORD)(sysclock / desired_speed);
 
-  	swapchannels = COM_CheckParm("-swapchannels");
+  	swapchannels = (snd_use_cmdline && COM_CheckParm("-swapchannels")) || snd_swap.value;	// 2026-11-06: or the Sound page
 
 	#if defined(__PPC__)
   	if (no68kFPU)
@@ -379,7 +397,8 @@ qboolean SNDDMA_InitPaula(void)
   	BeginIO(&audio2->ioa_Request);
 	//#endif
 
-  	OldInt = SetIntVector(channelnr+7,&AudioInt);
+  	aud_vector = channelnr+7;
+  	OldInt = SetIntVector(aud_vector,&AudioInt);
   	OldINTENA = custom->intenar;
 	#if defined(__PPC__)
   	*IntData.aud_start_time = 0;

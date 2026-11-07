@@ -133,10 +133,14 @@ void IN_MLookUp (void)
 {
 	KeyUp(&in_mlook);
 
-	if ( !(in_mlook.state&1) &&  lookspring.value)
+	if ( !IN_MLOOK_ON() &&  lookspring.value)
 		V_StartPitchDrift();
 
 }
+
+/* 2026-11-06: the Options menu's Mouse Look -- mouse look without holding
+ * a +mlook key (client.h IN_MLOOK_ON), saved in config.cfg */
+cvar_t	freelook = {"freelook", "0", true};
 
 void IN_UpDown(void)		{KeyDown(&in_up);}
 void IN_UpUp(void)		{KeyUp(&in_up);}
@@ -533,6 +537,10 @@ CL_InitInput
 */
 void CL_InitInput (void)
 {
+#ifndef AMIGAOS
+	Cvar_RegisterVariable (&freelook);	/* Amiga: in Host_Init, before the early config.cfg */
+#endif
+
 	Cmd_AddCommand ("+moveup",IN_UpDown);
 	Cmd_AddCommand ("-moveup",IN_UpUp);
 	Cmd_AddCommand ("+movedown",IN_DownDown);

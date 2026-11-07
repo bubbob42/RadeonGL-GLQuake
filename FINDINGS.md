@@ -37,6 +37,27 @@ Safety net (separate commit, to decide): stale water/sky chains are emptied at
 the start of every world walk, the water loop is bounded, `r_scene_phase`
 diagnostics report where a scene stopped (stdout with `-stdout`).
 
+### The left mouse button on the mouse port after GLQuake (lowlevel.library)
+
+Reported by midwan (2026-11-06): after quitting GLQuake, holding the left
+button of a mouse in the mouse port keeps releasing; USB mice are not
+affected. GLQuake (`in_amigajoy.c`) set all four ports to lowlevel.library's
+autosense, probed port 0 first, read port 0 every frame when no joystick was
+found (`Port` stayed 0), and left the ports in autosense on exit. Autosense
+on the mouse port guesses at a joystick or CD32 pad, whose buttons are read
+by clocking the fire line -- the left mouse button's line.
+
+Fix: port 0 is left alone unless `joy_force0` is GAMECTRL or JOYSTICK; the
+joystick is read only when one was found; on exit port 0 is set back to
+mouse mode (`SetJoyPortAttrs(0, SJA_Type, SJA_TYPE_MOUSE)`), which also
+repairs an autosense left by an earlier GLQuake in the same boot. MEASURED
+in FS-UAE (lowlevel.library 47.1, RadeonGL `test/auto/LowLevelPort0`):
+`ReadJoyPort(0)` after 1.1 reports UNKNOWN (autosense), after the new build
+MOUSE; the joystick in port 1 is still found. Any `SetJoyPortAttrs()` or
+`ReadJoyPort(0)` replaces gameport.device's VBlank server with
+lowlevel.library's until the next boot (VBList); that alone does not stop
+the mouse.
+
 ## Found, not fixed
 
 - **Mouse movement is lost.** `InputIntCode` (`in_amigamouse68k_gas.s`,
@@ -128,6 +149,163 @@ warp's angles are `coordinate * 0.05 + realtime`: in the hundreds within
 seconds. If a real 68040 behaves the same, the 1.0 `GLQuake040` threw
 underwater surfaces apart there; `Q_Sin` does not use the library. Not
 checked on a real 68040 (none here).
+
+### The night of 2026-11-06/07: what helped, what did not
+
+All A4000D, demo1 timedemo unless said, ABBA, RadeonGL 0.8 work in progress.
+
+- **Functions and loops on a cache line** (`-falign-functions=16
+  -falign-loops=16`, Makefile.radeongl): +0.3% demo1 at 320 x 240, +0.7%
+  at 1280 x 720, +1.4% demo2; the binary 3% larger. Code moving between
+  builds alone shifted speed by about 1% before.
+- **GL_RGL_dynamic_arrays** (RadeonGL's extension, a third hint): an
+  interpolated model frame is streamed without being hashed for the
+  upload cache. Only with `r_interpolations 1` (off by default): +0.7%,
+  cache misses 3478 -> 2221 a run. Without interpolation the vertices
+  repeat and the cache hits (two hits a model draw).
+- **The lightmap chain only when it is drawn:** every visible surface was
+  linked onto `lightmap_polys[]` for `R_BlendLightmaps`, which returns at
+  once on every multitexture path (`gl_texsort` 0) -- a write into a cold
+  surface's poly per surface. Now linked only with `gl_texsort` set:
+  demo1 +0.8%, demo3 +0.8%, demo2 +2.5% at 320 x 240.
+- **One matrix per model** (`R_MultModelMatrix`, gl_rmain.c): an alias
+  model's placement -- translate, three rotations, translate, scale, six
+  4x4 multiplies in the library and three sine/cosine pairs there -- built
+  in GLQuake (`Q_SinCosDeg`) and sent with one `glMultMatrixf`. demo1
+  29.5 -> 29.75 fps (+0.8%) at 320 x 240, +0.5% at 1280 x 720, demo3
+  +0.2%. The interpolated path (`r_interpolations 1`) and the doubled eyes
+  keep the calls; `-nomodelmatrix` brings them back for a comparison.
+  Checked on the host against the six-call chain: worst relative
+  difference 1e-5 over 100,000 random placements (a flipped pitch sign
+  gives 79).
+- **The dynamic lights' 64 slots looked at only when in use:**
+  `R_DrawAliasModel` went through all `MAX_DLIGHTS` (64) for every model,
+  comparing each slot's die time with a double, to find the few lights
+  that are on; now a list of the live ones is built once a rendered frame
+  (`R_ActiveDlights`). `R_AddDynamicLights` tested all 64 bits of a lit
+  surface's mask; now it walks the set bits word by word. Both give the
+  same lights in the same order. demo1 30.9 -> 31.35 fps (+1.3%), demo3
+  26.8 -> 27.35 (+2.1%).
+- **A model vertex in 24 bytes on RadeonGL:** the arrays' record carried a
+  texture coordinate w (1.0, for the other MiniGLs: glTexCoordPointer with
+  three components). On RadeonGL a second array without it is used (two
+  components), so each model vertex written, hashed and read is 24 bytes
+  instead of 28: demo1 31.15 -> 31.45 fps (+1.0%); the cache's traffic is
+  the same (the library packs its own format). The fill is one template
+  (`gl_aliasfill.h`, included for each record); the paths that write the
+  28-byte array (models without batch chunks, shadows) point the arrays
+  back at it while they draw. Other MiniGLs keep the 28-byte record (they
+  could not be tried here); `-noarray24` for a comparison. Checked with
+  `r_interpolations 1` and `r_shadows 1`: checker clean, picture right.
+- **Model index lists keyed by address:** RadeonGL hashed every model
+  chunk's index list in every draw to find it in its cache. The lists
+  never change while the model is in Quake's cache, so
+  `GL_DrawAliasBatch` now draws them under `GL_RGL_STATIC_INDICES_HINT`
+  (the world's hint since 0.7), and `Mod_LoadAliasModel` forgets all
+  address keys (`GL_FASTEST`) whenever it puts a model in the cache --
+  free at a level's start, and later only after the cache dropped a
+  model. demo1 31.5 -> 31.7 fps (+0.6%); checker clean on demo1 and
+  demo2. `-nomodelidxhint` hashes them as before.
+- **The model fill cache** (`gl_rmain.c`, before `GL_DrawAliasBatch`): a
+  chunk's records depend on the model, the chunk, the pose, `shadelight`,
+  `shadedots` and the alpha byte only (no interpolation, smooth models, no
+  .lit colours). Fills are kept by those in a ring of GLQuake's own (48K
+  records, 1.2 MB; 16K when that is not to be had), oldest first; a draw
+  whose fill is there neither fills nor lets RadeonGL read the bytes: they
+  are drawn under `GL_RGL_STATIC_ARRAYS_HINT`, keyed by address and a tag
+  that is new for every fill (`GL_RGL_ARRAYS_TAG_HINT`, RadeonGL 0.8, a
+  new extension `GL_RGL_arrays_tag`). Emptied when a model is cached.
+  Only 30% of model draws repeat the last frame's inputs, but animation
+  cycles bring poses back: demo1 31.55 -> 32.65 fps (+3.5%) with a 16K
+  ring, 33.0 with 48K; the library's misses rise (2000 -> 2130: a fill the
+  ring forgot is a new tag), its hashing and GLQuake's fills fall more.
+  PROVED exact: frame 400 of demo1 on the null card with a fixed frame
+  time (`+host_framerate 0.03`, RadeonGL `test/auto/GLQuakeNullPix`) is
+  pixel-identical to the build before the 24-byte records, the index hint
+  and the fill cache. `-nomfc` fills every draw as before.
+- **What a frame sends** (frame 400 of demo1, the null card's dump, 2992
+  longwords): immediate vertices (2D, particles, sprites) 27%, matrix
+  loads 18% (32 of 17 longwords: every transform change sends the
+  combined matrix), per indexed draw about 12 longwords (65 draws), the
+  rest texture and other state. Brush entities at the origin now skip
+  their glTranslatef (Cowcat's test, commented out, back): the matrix
+  keeps its version and is not sent again -- 26,000 longwords fewer a run,
+  33.1 against 33.0 fps (noise; kept, a condition and exact).
+  `-brushtranslate` translates always.
+- **Tried and dropped:** the frustum test of the world walk with an early
+  exit (the far corner decides "wholly outside" alone): no change. The
+  walk is memory-bound: its FPU instructions wait for node data, so fewer
+  of them gain nothing. Alias models' texture coordinates straight from
+  the model's own array instead of copied for every vertex of every draw
+  (a quarter of `R_SetupAliasFrame`): 29.5/29.5 against 29.6/29.5 fps,
+  demo3 26.1 against 26.2 -- the copy hides behind the vertex loop's
+  memory waits. Lightmaps uploaded by the rebuilt columns only (through a
+  packed scratch copy, MiniGL has no GL_UNPACK_ROW_LENGTH) instead of
+  whole 128-luxel rows: about 1.1 uploads a frame, on average 86 columns
+  by 40 rows, so a third fewer bytes -- 30.8/30.9/30.8 against
+  30.8/31.0/31.0 fps, nothing; the upload loop's time is the bus's.
+  A model vertex's byte coordinates converted through a 256-float table
+  (integer moves) instead of the FPU: 31.4 fps both ways -- the fill
+  waits for memory, which is why 4 bytes less a vertex did gain.
+- **The joystick port:** 1.1 read port 0 (the mouse port; empty on the
+  A4000D) every frame; with the lowlevel fix the joystick on port 1 is
+  found -- on the A4000D a game controller, read at 0.7% of the frame
+  (pad clocking). A port that reads as a plain joystick is now locked to
+  joystick mode (no pad clocking every frame); untested on a plain
+  joystick here.
+- **What each part of a frame costs** (demo1, 320 x 240, switched off one
+  at a time, RadeonGL 0.8c): all at 29.7 fps; `r_dynamic 0` 31.7 (+6.7%),
+  `r_drawviewmodel 0` 31.8 (+7%: the weapon alone), `r_drawentities 0`
+  45.5 (entities a third of the frame). The weapon's 2.2 ms led to the
+  library: its vertex block (about 10 KB) missed RadeonGL's upload cache in
+  half the frames (its colours follow the light the player walks through)
+  and could then not be cached at all -- the cache's ring had stopped at
+  the world's blocks for good, and every new block after the world went
+  over the bus uncached in every frame (7 MB of 14.7 MB a run). Fixed in
+  RadeonGL 0.8 (design-card-backend.md, "the ring no longer stops at a
+  live entry"): demo1 +3.3%, demo3 +1.1%, the same GLQuake.
+- **Sound:** AHI through the Prisma Megamix at 22 kHz costs about 22%
+  against Paula (demo1: 20.1 against 25.8 fps): AHI's own mixing on the
+  68060 on top of Quake's.
+- **Profile (1.1 + this night, demo1, 320 x 240):** library 49.5% (the
+  flush over the bus 11%, arrays 7%, validation 4%, index packing 3%),
+  world walk 10.7% (memory-bound), alias frames 6.4%, dynamic lights 6.9%
+  (render 2.2, add 1.7, mark 1.9, build 1.1), particles 3%.
+
+## Profiles of 2026-11-07 (morning): timedemo against play
+
+A4000D, the night's build with RadeonGL 0.8, the PC profiler on (it costs
+about 5%: demo1 31.1 fps against 32.9).
+
+- **demo1 at 320 x 240 and at 1280 x 720 look alike** (31.1 and 29.9 fps):
+  the lock wait of the 1.0 profile is gone (the overlap). Library 49%:
+  bus writes about 12% in all (the command stream into the ring 5.4%,
+  upload-cache misses 2.6%, the staged stream 1.2%, lightmap texels 2.8%
+  -- the "core_texture" share is `_Upload`'s loop), `ValidateOnce` 4.6%,
+  index packing 3.2%. Program 48%: the world 16% (walk, batches, flush),
+  dynamic lights 6%, alias models 6%, particles 3.8%.
+- **Sound, demo1 at 320 x 240:** no sound 31.1 fps, Paula 11 kHz 28.2
+  (-9%), AHI on the Prisma Megamix 11 kHz 24.2 (-22%), 22 kHz 21.3 (-32%);
+  without the profiler AHI 11 kHz 25.3 against 32.9. Quake's own mixing is
+  the same for both (6.5% of the samples at 11 kHz); AHI mixes at 11025 Hz
+  (no resampling, the console now says so), so the rest -- about 6 s of a
+  40 s run -- is the Prisma driver's software interrupt, outside GLQuake.
+- **Play is another program** (e1m1, 70 s scripted play with AHI, the new
+  `QuakeProfile` start at a played map's start, cl_main.c): library 32%,
+  program 63%; the server about a quarter. Call counts (a counting build,
+  3391 frames):
+  - `SV_PointContents` 5.8%: 30 calls a frame, 23 of them
+    `SV_CheckWaterTransition` in `SV_Physics_Step` -- every monster of the
+    map every frame, standing or not. The world never changes: a cache of
+    point -> contents is exact.
+  - `cvar()` in QuakeC 4.5% (`Cvar_VariableValue`'s list walk and
+    `strcmp`): id's `StartFrame` asks for "teamplay" and "skill" every
+    server frame, each a walk through the whole cvar list (memory latency).
+  - `Mod_PointInLeaf` 2.6%: 6 calls a frame from `PF_checkclient` (idle
+    monsters looking for the player); the same point gives the same leaf.
+  - `SV_Move` 10.7 a frame, 4.9 of them `SV_SetIdealPitch` (the player's
+    automatic pitch on slopes); `SV_RecursiveHullCheck` 3.4%,
+    `PR_ExecuteProgram` 3.3%.
 
 ## Size of the port
 

@@ -180,4 +180,22 @@ void SNDDMA_Submit(void);
 void S_AmbientOff (void);
 void S_AmbientOn (void);
 
+#ifdef AMIGAOS
+/* 2026-11-06, snd_amiga.c: the Sound page's settings, saved in config.cfg
+ * and registered before its early exec (host.c); the command line (-ahi,
+ * -paula, -audspeed, -swapchannels) wins for its run */
+extern cvar_t snd_device;	// "paula", "ahi" or "off"
+extern cvar_t snd_ahimode;	// an AHI audio mode ID (decimal), 0 = AHI's default
+extern cvar_t snd_rate;		// mixing rate in Hz
+extern cvar_t snd_swap;		// Paula: left and right swapped
+void SND_RegisterCvars (void);
+int SND_DeviceInUse (void);	// 0 none, 1 Paula, 2 AHI: what runs now
+extern int snd_use_cmdline;	// the drivers read -audspeed etc. only while set (the first start)
+void S_Restart (void);		// snd_dma.c: stop and start with the current settings
+
+#define SND_AHINAME	48
+/* snd_ahi.c: the real-time AHI modes, id and name; 0 without ahi.device */
+int SND_AHIListModes (unsigned long *ids, char (*names)[SND_AHINAME], int max);
+#endif
+
 #endif

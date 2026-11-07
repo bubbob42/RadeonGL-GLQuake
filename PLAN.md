@@ -63,5 +63,21 @@ RadeonGL with the static-arrays hint, check off, ABBA.
   alias frames 6%, chunk flush 4.5%. demo2 at 1280 x 720 -- 7% waiting in
   `p96LockBitMap` (P96 waits for the card to go idle before a lock: the
   Radeon is still on the last frame), 15% in `sin()` (now gone).
-- Next: the library side -- the lock wait at high resolutions (overlap)
-  and the flush; on the program side the alias frames.
+- Menus (docs/Concept-Menus-2026-11.md, decided 2026-11-06): all done, not
+  released yet -- U2 controls (Amiga key, mouse wheel, Amiga-V paste), U1
+  Mouse Look + Mouse Speed down to 0.5, U3 saved screen and sound settings,
+  U4 the Sound page (live restart), U5/U8 in RadeonGL (mode list, context
+  from a mode, live resize), U6 the Video Modes page (live switch), U7 the
+  2D scaled at high resolutions; and the lowlevel.library mouse-port fix.
+- Night of 2026-11-06/07, speed (FINDINGS has each with its figures):
+  aligned functions and loops, the dynamic-arrays hint, the lightmap chain
+  only with gl_texsort, one matrix per model, the dynamic lights' slots
+  only when in use, 24-byte model records, model index lists keyed by
+  address, the model fill cache -- and in RadeonGL 0.8 the upload cache
+  ring that no longer stops at the world's blocks. demo1 at 320 x 240
+  29.8 -> 32.9 fps, demo3 26.3 -> 28.5, demo1 at 1280 x 720 29.6 -> 32.4
+  (A4000D). Tried and dropped: the frustum early exit, texture
+  coordinates straight from the model, lightmap columns only, a byte ->
+  float table.
+- Speed, next: the library side -- the lock wait at high resolutions
+  (overlap) and the flush; on the program side the alias frames.

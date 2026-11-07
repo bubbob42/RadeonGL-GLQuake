@@ -65,6 +65,30 @@ void  VID_SetPalette (unsigned char *palette);
 void  VID_ShiftPalette (unsigned char *palette);
 // called for bonus and pain flashes, and for underwater color changes
 
+#ifdef AMIGAOS
+/* 2026-11-06, gl_vidamiga.c: the Video Modes page's settings, saved in
+ * config.cfg and registered before its early exec (host.c); -width,
+ * -height, -bpp and -buf on the command line win for their run */
+extern struct cvar_s vid_width;		// 0 = 320
+extern struct cvar_s vid_height;	// 0 = width * 3 / 4
+extern struct cvar_s vid_bpp;		// 15 or 16
+extern struct cvar_s vid_buffers;	// 2 (video sync) or 3
+extern struct cvar_s vid_modeid;	// a Picasso96 mode ID (decimal), 0 = by size
+extern struct cvar_s vid_conscale;	// the 2D's scale: 0 automatic, else a whole factor
+void VID_RegisterCvars (void);
+
+typedef struct
+{
+	int		width, height;
+	unsigned long	id;		// the library's mode id, 0 for a size only
+} vidmode_t;
+
+void VID_SetSizes (void);		// vid's sizes from the screen's
+void VID_SwitchMode (int w, int h);	// w x h live, from the end of this frame
+void VID_GetSize (int *w, int *h);	// the screen's size now
+int VID_ListModes (vidmode_t *modes, int max);	// the Video Modes page's list
+#endif
+
 void  VID_Init (unsigned char *palette);
 // Called at startup to set up translation tables, takes 256 8 bit RGB values
 // the palette data will go away after the call, so it must be copied off if

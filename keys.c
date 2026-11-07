@@ -136,6 +136,10 @@ keyname_t keynames[] =
 
 	{"PAUSE", K_PAUSE},
 
+#ifdef AMIGAOS
+	{"AMIGA", K_AMIGA},	// 2026-11-06: either Amiga key (gl_vidamiga.c rawkeyconv)
+#endif
+
 	{"MWHEELUP", K_MWHEELUP},
 	{"MWHEELDOWN", K_MWHEELDOWN},
 

@@ -378,6 +378,12 @@ typedef struct
 } kbutton_t;
 
 extern kbutton_t in_mlook, in_klook;
+
+/* 2026-11-06: mouse look is on while a +mlook key is held or while the
+ * Options menu's Mouse Look (cvar freelook, saved) is on */
+extern cvar_t freelook;
+#define IN_MLOOK_ON()	((in_mlook.state & 1) || freelook.value)
+
 extern kbutton_t in_strafe;
 extern kbutton_t  in_speed;
 extern kbutton_t in_attack; // JPG - added this for completeness

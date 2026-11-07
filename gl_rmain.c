@@ -193,11 +193,29 @@ typedef struct qglarray_s
 
 static qglarray_t *global_qglarray = NULL;
 
+/* 2026-11-07: the same without w, for RadeonGL (glTexCoordPointer with two
+ * components): every model vertex GL_DrawAliasBatch writes, and the
+ * library hashes and reads, is 24 bytes instead of 28 (MEASURED, A4000D
+ * demo1: +0.8%). The other MiniGLs keep the 28-byte record and its w; so
+ * do the paths that write global_qglarray (models without batch chunks,
+ * shadows), which point the arrays back at it while they draw.
+ * -noarray24: the 28-byte record on RadeonGL too. */
+typedef struct qglarray24_s
+{
+	float	x,y,z;
+	float	s,t;
+	ULONG	c;		// rgba packed
+} qglarray24_t;
+
+static qglarray24_t *qglarray24 = NULL;
+static int	qgl_rgl24 = -1;		// the 24-byte arrays in use, -1: not decided
+
 void qgl_InitArrays(void)
 {
 	int i;
 
 	global_qglarray = malloc(sizeof(qglarray_t)*4096);
+	qglarray24 = malloc(sizeof(qglarray24_t)*4096);
 
 	#define maxlight 0xffffffff
 
@@ -206,11 +224,45 @@ void qgl_InitArrays(void)
 		global_qglarray[i].w = 1.0;
 		global_qglarray[i].c = maxlight;
 	}
+
+	if (qglarray24)
+		for (i=0; i<4096; i++)
+			qglarray24[i].c = maxlight;
 }
 
 void qgl_FreeArrays(void)
 {
 	free(global_qglarray);
+	free(qglarray24);
+	qglarray24 = NULL;
+}
+
+/* a call that writes global_qglarray, with the arrays pointed at it */
+#define QGL_ARRAYS28(call) \
+	do { if (qgl_rgl24 > 0) qgl_PointArrays (0); call; if (qgl_rgl24 > 0) qgl_PointArrays (1); } while (0)
+
+/* the model arrays' pointers at the 24-byte record (l24) or the 28-byte one */
+static void qgl_PointArrays (int l24)
+{
+	if (l24)
+	{
+		glTexCoordPointer(2, GL_FLOAT, sizeof(qglarray24_t), &qglarray24->s);
+
+		if(gl_smoothmodels.value)
+			glColorPointer(4, MGL_UBYTE_ARGB, sizeof(qglarray24_t), &qglarray24->c);
+
+		glVertexPointer(3, GL_FLOAT, sizeof(qglarray24_t), &qglarray24->x);
+	}
+
+	else
+	{
+		glTexCoordPointer(3, GL_FLOAT, sizeof(qglarray_t), &global_qglarray->s);
+
+		if(gl_smoothmodels.value)
+			glColorPointer(4, MGL_UBYTE_ARGB, sizeof(qglarray_t), &global_qglarray->c);
+
+		glVertexPointer(3, GL_FLOAT, sizeof(qglarray_t), &global_qglarray->x);
+	}
 }
 
 static void qgl_EnableArray()
@@ -248,6 +300,28 @@ static void qgl_EnableArray()
 	}
 
 	#else // new Cowcat
+
+	if (qgl_rgl24 < 0)
+	{
+		extern const char *gl_extensions;	// gl_vidamiga.c
+
+		/* RadeonGL (its own extension names it) takes two texture
+		 * coordinates; the 24-byte arrays only if they were allocated */
+		qgl_rgl24 = qglarray24 && gl_extensions && strstr (gl_extensions, "GL_RGL_dynamic_arrays")
+			&& !COM_CheckParm ("-noarray24");
+	}
+
+	if (qgl_rgl24)
+	{
+		qgl_PointArrays (1);
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+		if(gl_smoothmodels.value)
+			glEnableClientState(GL_COLOR_ARRAY);
+
+		glEnableClientState(GL_VERTEX_ARRAY);
+		return;
+	}
 
 	glTexCoordPointer(3, GL_FLOAT, sizeof(qglarray_t), &global_qglarray->s); // 3 for w coord - test only with 2 - Cowcat
  	//glTexCoordPointer(2, GL_FLOAT, sizeof(qglarray_t), &global_qglarray->texture);
@@ -1663,6 +1737,192 @@ per strip vertex.
 static ULONG	normcolor[256];		// GL_DrawAliasBatch: a normal's colour this draw
 static int	normstamp[256], normframe;
 
+/* 2026-11-06: RadeonGL's GL_RGL_dynamic_arrays -- an interpolated frame is
+ * new every draw, so the library streams it without hashing it for its
+ * upload cache (where it would only push out what does repeat).
+ * -nodynhint: without. Other minigl.libraries never see the hint. */
+#ifndef GL_RGL_DYNAMIC_ARRAYS_HINT
+#define GL_RGL_DYNAMIC_ARRAYS_HINT	0x52474c03
+#endif
+extern const char *gl_extensions;	// gl_vidamiga.c
+static int	rgl_dynamic = -1;
+static int	rgl_staticidx = -1;
+
+#define AF_NAME	GL_AliasFill28
+#define AF_T	qglarray_t
+#include "gl_aliasfill.h"
+#undef AF_NAME
+#undef AF_T
+#define AF_NAME	GL_AliasFill24
+#define AF_T	qglarray24_t
+#include "gl_aliasfill.h"
+#undef AF_NAME
+#undef AF_T
+
+/*
+=============
+The model fill cache
+
+2026-11-07. A model chunk's 24-byte records depend on the model, the
+chunk, the pose, shadelight, shadedots and the alpha byte, nothing else
+(the frame without interpolation, gl_smoothmodels, no .lit colours). The
+cache keeps fills by those, in a ring of its own, oldest first: a draw
+whose fill is there neither fills nor makes RadeonGL read the bytes --
+they are drawn under GL_RGL_STATIC_ARRAYS_HINT, keyed by address and a tag
+(GL_RGL_ARRAYS_TAG_HINT, RadeonGL 0.8) that is new for every fill, so a
+place in the ring filled anew is a new key. Draws are synchronous: once
+glDrawElements returns the library has its copy, and the ring may move on.
+Emptied whenever a model is cached (R_ClearModelFillCache, from
+Mod_LoadAliasModel). -nomfc: every draw filled as before.
+=============
+*/
+#define MFC_VERTS	49152		// qglarray24_t records in the ring (1.2 MB; 16384, 384 KB,
+					// when that is not to be had: +0.8% for the larger, MEASURED)
+#define MFC_QUEUE	512		// entries, oldest first
+#define MFC_SLOTS	2048		// their lookup table (a power of two)
+#define MFC_PROBE	4
+
+#ifndef GL_RGL_ARRAYS_TAG_HINT
+#define GL_RGL_ARRAYS_TAG_HINT	0x52474c04
+#endif
+#define GL_RGL_STATIC_ARRAYS_HINT_M	0x52474c01	// GL_RGL_STATIC_ARRAYS_HINT (gl_rsurf.c)
+
+typedef struct
+{
+	aliashdr_t	*hdr;
+	int		chunk, pose;
+	unsigned	sl;		// shadelight's bits
+	float		*sd;		// shadedots
+	ULONG		a;		// the alpha byte, shifted
+	int		pos, count;	// in mfc_ring
+	ULONG		tag;
+	int		slot;		// its lookup slot
+} mfcentry_t;
+
+static qglarray24_t	*mfc_ring;
+static mfcentry_t	mfc_q[MFC_QUEUE];
+static int		mfc_head, mfc_n, mfc_pos;
+static short		mfc_slot[MFC_SLOTS];	// mfc_q index + 1, 0 = empty
+static ULONG		mfc_tag;
+static int		mfc_on = -1;
+static int		mfc_verts;		// the ring's size
+
+void R_ClearModelFillCache (void)
+{
+	mfc_head = mfc_n = mfc_pos = 0;
+	memset (mfc_slot, 0, sizeof(mfc_slot));
+}
+
+static unsigned MFC_Hash (aliashdr_t *hdr, int chunk, int pose, unsigned sl, float *sd, ULONG a)
+{
+	unsigned	h;
+
+	h = (unsigned) (unsigned long) hdr * 2654435761U;
+	h ^= (unsigned) chunk * 40503U + (unsigned) pose * 2246822519U;
+	h ^= sl * 3266489917U;
+	h ^= (unsigned) (unsigned long) sd * 668265263U;
+	h ^= a;
+	return (h ^ (h >> 15)) & (MFC_SLOTS - 1);
+}
+
+static mfcentry_t *MFC_Find (aliashdr_t *hdr, int chunk, int pose, unsigned sl, float *sd, ULONG a)
+{
+	unsigned	s;
+	int		i, q;
+	mfcentry_t	*e;
+
+	s = MFC_Hash (hdr, chunk, pose, sl, sd, a);
+
+	for (i=0 ; i<MFC_PROBE ; i++)
+	{
+		q = mfc_slot[(s + i) & (MFC_SLOTS - 1)];
+
+		if (q)
+		{
+			e = &mfc_q[q - 1];
+
+			if (e->hdr == hdr && e->chunk == chunk && e->pose == pose && e->sl == sl
+				&& e->sd == sd && e->a == a)
+				return e;
+		}
+	}
+
+	return NULL;
+}
+
+static void MFC_Pop (void)
+{
+	mfcentry_t	*e;
+
+	e = &mfc_q[mfc_head];
+
+	if (mfc_slot[e->slot] == mfc_head + 1)
+		mfc_slot[e->slot] = 0;
+
+	mfc_head = (mfc_head + 1) % MFC_QUEUE;
+	mfc_n--;
+}
+
+/* room for count records, the oldest entries in the way dropped; NULL when
+ * the chunk is too big to keep */
+static mfcentry_t *MFC_Add (aliashdr_t *hdr, int chunk, int pose, unsigned sl, float *sd, ULONG a, int count)
+{
+	int		start, i, q, t;
+	unsigned	s;
+	mfcentry_t	*e;
+
+	if (count > mfc_verts / 4)
+		return NULL;
+
+	start = mfc_pos;
+
+	if (start + count > mfc_verts)
+	{
+		// the end of the ring: what lies there goes
+		while (mfc_n > 0 && mfc_q[mfc_head].pos >= start)
+			MFC_Pop ();
+
+		start = 0;
+	}
+
+	while (mfc_n > 0 && mfc_q[mfc_head].pos < start + count && mfc_q[mfc_head].pos + mfc_q[mfc_head].count > start)
+		MFC_Pop ();
+
+	if (mfc_n == MFC_QUEUE)
+		MFC_Pop ();
+
+	q = (mfc_head + mfc_n) % MFC_QUEUE;
+	e = &mfc_q[q];
+	e->hdr = hdr;
+	e->chunk = chunk;
+	e->pose = pose;
+	e->sl = sl;
+	e->sd = sd;
+	e->a = a;
+	e->pos = start;
+	e->count = count;
+	e->tag = ++mfc_tag;
+
+	s = MFC_Hash (hdr, chunk, pose, sl, sd, a);
+	e->slot = s;
+
+	for (i=0 ; i<MFC_PROBE ; i++)
+	{
+		t = (s + i) & (MFC_SLOTS - 1);
+
+		if (!mfc_slot[t])
+		{
+			e->slot = t;
+			break;
+		}
+	}
+
+	mfc_slot[e->slot] = (short) (q + 1);	// all taken: the first one's entry is out of reach
+	mfc_n++;
+	mfc_pos = start + count;
+	return e;
+}
+
 static void GL_DrawAliasBatch (aliashdr_t *paliashdr, int pose1, int pose2, float blend, qboolean lerp)
 {
 	ULONG			a;
@@ -1673,9 +1933,12 @@ static void GL_DrawAliasBatch (aliashdr_t *paliashdr, int pose1, int pose2, floa
 	short			*bverts;
 	float			*bst;
 	unsigned short		*bindexes;
-	int			c, i;
+	int			c, i, dyn, usemfc, pointed;
+	unsigned		slbits;
 
 	alpha = entalpha;	// johnfitz
+	pointed = 0;
+	slbits = 0;
 
 	if (lerp)
 	{
@@ -1747,103 +2010,130 @@ static void GL_DrawAliasBatch (aliashdr_t *paliashdr, int pose1, int pose2, floa
 
 	normframe++;	// a new draw: every normal's colour is worked out again
 
+	if (rgl_dynamic < 0)
+		rgl_dynamic = gl_extensions && strstr (gl_extensions, "GL_RGL_dynamic_arrays")
+			&& !COM_CheckParm ("-nodynhint");
+
+	dyn = rgl_dynamic && lerp && blend > 0 && pose1 != pose2;
+
+	if (dyn)
+		glHint (GL_RGL_DYNAMIC_ARRAYS_HINT, GL_NICEST);
+
+	/* 2026-11-07: a model's index lists never change while it is in the
+	 * cache: RadeonGL keys them by address instead of hashing them in
+	 * every draw (GL_RGL_static_arrays; Mod_LoadAliasModel forgets the
+	 * keys when a model is cached anew). -nomodelidxhint: hashed. */
+	if (rgl_staticidx < 0)
+		rgl_staticidx = gl_extensions && strstr (gl_extensions, "GL_RGL_static_arrays")
+			&& !COM_CheckParm ("-nomodelidxhint");
+
+	if (rgl_staticidx)
+		glHint (0x52474c02, GL_NICEST);		// GL_RGL_STATIC_INDICES_HINT
+
+	if (mfc_on < 0)
+	{
+		mfc_on = qgl_rgl24 > 0 && gl_extensions && strstr (gl_extensions, "GL_RGL_arrays_tag")
+			&& !COM_CheckParm ("-nomfc");
+
+		if (mfc_on)
+		{
+			mfc_verts = MFC_VERTS;
+			mfc_ring = malloc (sizeof(qglarray24_t) * mfc_verts);
+
+			if (!mfc_ring)
+			{
+				mfc_verts = MFC_VERTS / 3;
+				mfc_ring = malloc (sizeof(qglarray24_t) * mfc_verts);
+			}
+
+			mfc_on = mfc_ring != NULL;
+			R_ClearModelFillCache ();
+		}
+	}
+
+	usemfc = mfc_on > 0 && !lerp && gl_smoothmodels.value
+		#ifdef LITFILES
+		&& !eyecandy
+		#endif
+		;
+
+	if (usemfc)
+	{
+		memcpy (&slbits, &shadelight, sizeof(slbits));
+		glHint (GL_RGL_STATIC_ARRAYS_HINT_M, GL_NICEST);
+	}
+
 	for (c=0 ; c<paliashdr->numbatchchunks ; c++, chunk++)
 	{
 		short		*bv = bverts + chunk->firstvert;
 		float		*st = bst + chunk->firstvert * 2;
-		qglarray_t	*lva = &global_qglarray[0];
+		mfcentry_t	*e;
 
-		if (lerp)
+		e = NULL;
+
+		if (usemfc)
 		{
-			for (i=0 ; i<chunk->numverts ; i++, lva++, st += 2)
+			e = MFC_Find (paliashdr, c, pose1, slbits, shadedots, a);
+
+			if (!e)
 			{
-				trivertx_t	*v1 = verts1 + bv[i];
-				trivertx_t	*v2 = verts2 + bv[i];
-				vec3_t		d;
+				e = MFC_Add (paliashdr, c, pose1, slbits, shadedots, a, chunk->numverts);
 
-				lva->s = st[0];
-				lva->t = st[1];
-
-				VectorSubtract(v2->v, v1->v, d);
-
-				lva->x = v1->v[0] + (blend * d[0]);
-				lva->y = v1->v[1] + (blend * d[1]);
-				lva->z = v1->v[2] + (blend * d[2]);
+				if (e)
+					GL_AliasFill24 (mfc_ring + e->pos, chunk->numverts, bv, st, verts1, verts2, blend, lerp, a);
 			}
-		}
 
-		else
-		{
-			for (i=0 ; i<chunk->numverts ; i++, lva++, st += 2)
+			if (e)
 			{
-				trivertx_t	*v1 = verts1 + bv[i];
-
-				lva->s = st[0];
-				lva->t = st[1];
-
-				lva->x = (float)v1->v[0];
-				lva->y = (float)v1->v[1];
-				lva->z = (float)v1->v[2];
-			}
-		}
-
-		// lit from pose1's normals, as both frame functions do
-		if (gl_smoothmodels.value)
-		{
-			lva = &global_qglarray[0];
-
-			#ifdef LITFILES
-			if(eyecandy)
-			{
-				for (i=0 ; i<chunk->numverts ; i++, lva++)
-				{
-					ULONG	r, g, b;
-
-					l = shadedots[verts1[bv[i]].lightnormalindex];
-
-					r = (ULONG)(lightcolor[0]*l);
-					g = (ULONG)(lightcolor[1]*l);
-					b = (ULONG)(lightcolor[2]*l);
-
-					if(r > 255) r = 255;
-					if(g > 255) g = 255;
-					if(b > 255) b = 255;
-
-					lva->c = a | (r<<16) | (g<<8) | b;
-				}
+				glTexCoordPointer(2, GL_FLOAT, sizeof(qglarray24_t), &mfc_ring[e->pos].s);
+				glColorPointer(4, MGL_UBYTE_ARGB, sizeof(qglarray24_t), &mfc_ring[e->pos].c);
+				glVertexPointer(3, GL_FLOAT, sizeof(qglarray24_t), &mfc_ring[e->pos].x);
+				glHint (GL_RGL_ARRAYS_TAG_HINT, e->tag);
+				pointed = 1;
 			}
 
 			else
-			#endif
 			{
-				/* 2026-11-06: each normal's colour (162 of them) worked
-				 * out the first time this draw meets it, then reused:
-				 * the same value as per vertex, one float multiply and
-				 * conversion a normal instead of a vertex */
-				for (i=0 ; i<chunk->numverts ; i++, lva++)
+				// too big to keep: the shared array, its bytes read
+				glHint (GL_RGL_STATIC_ARRAYS_HINT_M, GL_DONT_CARE);
+
+				if (pointed)
 				{
-					int	n = verts1[bv[i]].lightnormalindex;
-
-					if (normstamp[n] != normframe)
-					{
-						ULONG	lit = (ULONG)(shadedots[n] * shadelight);
-
-						if(lit > 255)
-							lit = 255; //clamp
-
-						normcolor[n] = a | (lit<<16) | (lit<<8) | lit;
-						normstamp[n] = normframe;
-					}
-
-					lva->c = normcolor[n];
+					qgl_PointArrays (1);
+					pointed = 0;
 				}
+
+				GL_AliasFill24 (qglarray24, chunk->numverts, bv, st, verts1, verts2, blend, lerp, a);
 			}
 		}
+
+		else if (qgl_rgl24 > 0)
+			GL_AliasFill24 (qglarray24, chunk->numverts, bv, st, verts1, verts2, blend, lerp, a);
+
+		else
+			GL_AliasFill28 (global_qglarray, chunk->numverts, bv, st, verts1, verts2, blend, lerp, a);
 
 		glLockArrays(0, chunk->numverts);
 		glDrawElements(GL_TRIANGLES, chunk->numindexes, GL_UNSIGNED_SHORT, bindexes + chunk->firstindex);
 		glUnlockArrays();
+
+		if (usemfc && !e)
+			glHint (GL_RGL_STATIC_ARRAYS_HINT_M, GL_NICEST);	// the next chunk may be kept
 	}
+
+	if (usemfc)
+	{
+		glHint (GL_RGL_STATIC_ARRAYS_HINT_M, GL_DONT_CARE);
+
+		if (pointed)
+			qgl_PointArrays (1);		// the shared array again
+	}
+
+	if (dyn)
+		glHint (GL_RGL_DYNAMIC_ARRAYS_HINT, GL_DONT_CARE);
+
+	if (rgl_staticidx)
+		glHint (0x52474c02, GL_DONT_CARE);
 }
 
 
@@ -2262,10 +2552,10 @@ void R_SetupAliasInterpolatedFrame (int frame, aliashdr_t *paliashdr, entity_t *
 	else
 	{
 		if( blend == 0 )
-			GL_DrawAliasArrayFrame (paliashdr, e->pose1 ); // new test - Cowcat
+			QGL_ARRAYS28 (GL_DrawAliasArrayFrame (paliashdr, e->pose1 )); // new test - Cowcat
 
 		else
-			GL_DrawAliasArrayBlendedFrame (paliashdr, e->pose1, e->pose2, blend );
+			QGL_ARRAYS28 (GL_DrawAliasArrayBlendedFrame (paliashdr, e->pose1, e->pose2, blend ));
 	}
 } 
 
@@ -2306,7 +2596,7 @@ void R_SetupAliasFrame (int frame, aliashdr_t *paliashdr)
 			GL_DrawAliasTrisFrame (paliashdr, pose);
 		else
 	#endif
-		GL_DrawAliasArrayFrame (paliashdr, pose);
+		QGL_ARRAYS28 (GL_DrawAliasArrayFrame (paliashdr, pose));
 	
 	}
 }
@@ -2374,13 +2664,96 @@ void GL_BindTest(int texnum)
 extern float chase_alpha;
 //#define ENTALPHA_DECODE2(a) (((a)==ENTALPHA_DEFAULT)?1.0f:((float)(a)-1)*(float)0.003937007874)
 
+/*
+=================
+R_ActiveDlights
+
+2026-11-07: the dynamic lights alive in this rendered frame, by index, in
+cl_dlights order. R_DrawAliasModel went through all MAX_DLIGHTS (64) for
+every model, comparing each one's die time, to find the few that are on
+(PROFILED, A4000D demo1: 0.5% of the frame). Lights are spawned and decay
+before the scene is drawn, so the list holds for the whole frame.
+=================
+*/
+static int	dl_list[MAX_DLIGHTS];
+static int	dl_count;
+static int	dl_frame = -1;
+static double	dl_time = -1;
+
+static int R_ActiveDlights (void)
+{
+	int	i;
+
+	if (dl_frame != r_framecount || dl_time != cl.time)
+	{
+		dl_count = 0;
+
+		for (i=0 ; i<MAX_DLIGHTS ; i++)
+		{
+			if (cl_dlights[i].die < cl.time || !cl_dlights[i].radius)
+				continue;
+
+			dl_list[dl_count++] = i;
+		}
+
+		dl_frame = r_framecount;
+		dl_time = cl.time;
+	}
+
+	return dl_count;
+}
+
+/*
+=================
+R_MultModelMatrix
+
+2026-11-07: an alias model's whole placement in one glMultMatrixf --
+T(origin) Rz(yaw) Ry(-pitch) Rx(roll) T(scale_origin) S(scale), as
+R_RotateForEntity, glTranslatef and glScalef build it in six calls, each a
+4x4 multiply in the library and the rotations a sine and cosine there too.
+Here the sines are mathlib's (Q_SinCosDeg on the 040/060). -nomodelmatrix:
+the six calls.
+=================
+*/
+static int	modelmatrix = -1;
+
+static void R_MultModelMatrix (const float *org, const float *ang, const float *so, const float *sc)
+{
+	float	sa, ca, sb, cb, sr, cr, r[9], m[16];
+
+#ifdef Q_SOFT_TRIG
+	Q_SinCosDeg (ang[1], &sa, &ca);		// yaw, about z
+	Q_SinCosDeg (-ang[0], &sb, &cb);	// -pitch, about y (alias models' pitch is inverted)
+	Q_SinCosDeg (ang[2], &sr, &cr);		// roll, about x
+#else
+	sa = sin (DEG2RAD(ang[1]));	ca = cos (DEG2RAD(ang[1]));
+	sb = sin (DEG2RAD(-ang[0]));	cb = cos (DEG2RAD(-ang[0]));
+	sr = sin (DEG2RAD(ang[2]));	cr = cos (DEG2RAD(ang[2]));
+#endif
+
+	// R = Rz Ry Rx, by columns
+	r[0] = ca*cb;			r[1] = sa*cb;			r[2] = -sb;
+	r[3] = ca*sb*sr - sa*cr;	r[4] = sa*sb*sr + ca*cr;	r[5] = cb*sr;
+	r[6] = ca*sb*cr + sa*sr;	r[7] = sa*sb*cr - ca*sr;	r[8] = cb*cr;
+
+	m[0] = r[0]*sc[0];	m[1] = r[1]*sc[0];	m[2] = r[2]*sc[0];	m[3] = 0;
+	m[4] = r[3]*sc[1];	m[5] = r[4]*sc[1];	m[6] = r[5]*sc[1];	m[7] = 0;
+	m[8] = r[6]*sc[2];	m[9] = r[7]*sc[2];	m[10] = r[8]*sc[2];	m[11] = 0;
+	m[12] = org[0] + r[0]*so[0] + r[3]*so[1] + r[6]*so[2];
+	m[13] = org[1] + r[1]*so[0] + r[4]*so[1] + r[7]*so[2];
+	m[14] = org[2] + r[2]*so[0] + r[5]*so[1] + r[8]*so[2];
+	m[15] = 1;
+
+	glMultMatrixf (m);
+}
+
 void R_DrawAliasModel (entity_t *e) // modded - Cowcat
 {
 	#ifdef LITFILES
 	extern vec3_t	lightcolor;
 	#endif
 
-	int		i, lnum, anim;
+	int		i, lnum, anim, ndl, idl;
 	vec3_t		dist;
 	float		add;
 	model_t		*clmodel;
@@ -2541,10 +2914,11 @@ void R_DrawAliasModel (entity_t *e) // modded - Cowcat
 			if (e == &cl.viewent && ambientlight < 24)
 				ambientlight = shadelight = 24;
 
-			for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
+			ndl = R_ActiveDlights ();
+
+			for (idl=0 ; idl<ndl ; idl++)
 			{
-				if (cl_dlights[lnum].die < cl.time || !cl_dlights[lnum].radius)
-					continue; // test 2019 - Cowcat
+				lnum = dl_list[idl];
 
 				//if (cl_dlights[lnum].die >= cl.time)
 				{
@@ -2614,10 +2988,11 @@ void R_DrawAliasModel (entity_t *e) // modded - Cowcat
 				if (lightcolor[2] < 24) lightcolor[2] = 24; 
 			} 
 
-			for (lnum=0 ; lnum < MAX_DLIGHTS ; lnum++)
+			ndl = R_ActiveDlights ();
+
+			for (idl=0 ; idl<ndl ; idl++)
 			{ 
-				if (cl_dlights[lnum].die < cl.time || !cl_dlights[lnum].radius)
-					continue; // test 2019 - Cowcat
+				lnum = dl_list[idl];
 
 				//if (cl_dlights[lnum].die >= cl.time)
 				{ 
@@ -2681,6 +3056,30 @@ void R_DrawAliasModel (entity_t *e) // modded - Cowcat
 
 	#else
 
+	if (modelmatrix < 0)
+		modelmatrix = !COM_CheckParm ("-nomodelmatrix");
+
+	if ( modelmatrix && ((e == &cl.viewent) || (clmodel->modhint == MOD_FLAME) || (r_interpolations.value == 0))
+		&& !(clmodel->modhint == MOD_EYES && gl_doubleeyes.value) )
+	{
+		// 2026-11-07: rotation, translation and scale in one matrix
+		float	so[3], sc[3], gs;
+
+		gs = 1.0f;
+
+		if ( (e == &cl.viewent) && (cl_gunfov.value) && scr_fov.value > 90 )
+			gs = 1.0f / tan(DEG2RAD(scr_fov.value / 2)); // Phoenix
+
+		so[0] = paliashdr->scale_origin[0] * gs;
+		so[1] = paliashdr->scale_origin[1];
+		so[2] = paliashdr->scale_origin[2];
+		sc[0] = paliashdr->scale[0] * gs;
+		sc[1] = paliashdr->scale[1];
+		sc[2] = paliashdr->scale[2];
+		R_MultModelMatrix (e->origin, e->angles, so, sc);
+		goto placed;
+	}
+
 	if( (e == &cl.viewent) || (clmodel->modhint == MOD_FLAME) || (r_interpolations.value == 0) )
 		//R_RotateForEntity (e);
 		R_RotateForEntity (e, false);
@@ -2721,6 +3120,7 @@ void R_DrawAliasModel (entity_t *e) // modded - Cowcat
 		}
 	}
 
+placed:
 	anim = (int)(cl.time*10) & 3;
 
 	GL_BindCheck(paliashdr->gl_texturenum[e->skinnum][anim]); // textures repeat - Cowcat 2019
@@ -2827,7 +3227,7 @@ void R_DrawAliasModel (entity_t *e) // modded - Cowcat
 				GL_DrawAliasBlendedShadow (paliashdr, e->pose1, e->pose2, e, downtrace);
 
 			else
-				GL_DrawAliasShadow (paliashdr, lastposenum, e, downtrace);
+				QGL_ARRAYS28 (GL_DrawAliasShadow (paliashdr, lastposenum, e, downtrace));
 				
 			glEnable (GL_TEXTURE_2D);
 			glDisable (GL_BLEND);

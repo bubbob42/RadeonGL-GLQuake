@@ -26,7 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //void (*vid_menudrawfn)(void);
 //void (*vid_menukeyfn)(int key);
 
-enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist, m_detail} m_state;
+enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist, m_detail, m_sound} m_state;
 
 void M_Menu_Detail_f (void); //surgeon
 void M_Menu_Main_f (void);
@@ -38,7 +38,8 @@ void M_Menu_Setup_f (void);
 void M_Menu_Net_f (void);
 void M_Menu_Options_f (void);
 void M_Menu_Keys_f (void);
-//void M_Menu_Video_f (void);
+void M_Menu_Sound_f (void);	// 2026-11-06
+void M_Menu_Video_f (void);	// 2026-11-06
 void M_Menu_Help_f (void);
 void M_Menu_Quit_f (void);
 void M_Menu_SerialConfig_f (void);
@@ -58,7 +59,7 @@ void M_Setup_Draw (void);
 void M_Net_Draw (void);
 void M_Options_Draw (void);
 void M_Keys_Draw (void);
-//void M_Video_Draw (void);
+void M_Video_Draw (void);
 void M_Help_Draw (void);
 void M_Quit_Draw (void);
 void M_SerialConfig_Draw (void);
@@ -78,7 +79,7 @@ void M_Setup_Key (int key);
 void M_Net_Key (int key);
 void M_Options_Key (int key);
 void M_Keys_Key (int key);
-//void M_Video_Key (int key);
+void M_Video_Key (int key);
 void M_Help_Key (int key);
 void M_Quit_Key (int key);
 void M_SerialConfig_Key (int key);
@@ -1142,11 +1143,12 @@ again:
 /* OPTIONS MENU */
 
 #ifdef _WIN32
-#define OPTIONS_ITEMS 14
+#define OPTIONS_ITEMS 17
 #else
-/* 2026-11-06: 13 entries, 0 (Customize details) to 12 (Lookstrafe). It was
- * 14, which left an empty row 13 for the cursor. */
-#define OPTIONS_ITEMS 13 //details by surgeon, +1 for Brightness, -1 for the empty row
+/* 2026-11-06: 16 entries, 0 (Customize details) to 15 (Sound Options). It
+ * was 14 with only 13 rows, which left an empty row for the cursor; then
+ * Mouse Look (row 11), Video Options (14) and Sound Options (15) came in. */
+#define OPTIONS_ITEMS 16 //details by surgeon, +1 Brightness, +1 Mouse Look, +2 Video/Sound Options
 #endif
 
 #define SLIDER_RANGE  10
@@ -1162,7 +1164,7 @@ void M_Menu_Options_f (void)
 	checkfmp(); // Cowcat
 
 	#ifdef _WIN32
-	if ((options_cursor == 14) && (modestate != MS_WINDOWED))
+	if ((options_cursor == 17) && (modestate != MS_WINDOWED))
 	{
 		options_cursor = 0;
 	}
@@ -1200,9 +1202,11 @@ void M_AdjustSliders (int dir)
     break;
 
   case 6: // mouse speed
+    /* 2026-11-06: down to 0.5 (was 1): since 1.0 every mouse movement
+     * counts, so the same value turns faster than before */
     sensitivity.value += dir * 0.5;
-    if (sensitivity.value < 1)
-      sensitivity.value = 1;
+    if (sensitivity.value < 0.5)
+      sensitivity.value = 0.5;
     if (sensitivity.value > 11)
       sensitivity.value = 11;
     Cvar_SetValue ("sensitivity", sensitivity.value);
@@ -1245,16 +1249,22 @@ void M_AdjustSliders (int dir)
     Cvar_SetValue ("m_pitch", -m_pitch.value);
     break;
 
-  case 11:  // lookspring
+  case 11:  // mouse look (2026-11-06): as a lasting +mlook, saved
+    Cvar_SetValue ("freelook", !freelook.value);
+    if (!IN_MLOOK_ON() && lookspring.value)
+      V_StartPitchDrift ();	// as releasing a +mlook key does
+    break;
+
+  case 12:  // lookspring
     Cvar_SetValue ("lookspring", !lookspring.value);
     break;
 
-  case 12:  // lookstrafe
+  case 13:  // lookstrafe
     Cvar_SetValue ("lookstrafe", !lookstrafe.value);
     break;
 
 #ifdef _WIN32
-  case 14:  // _windowed_mouse
+  case 17:  // _windowed_mouse
     Cvar_SetValue ("_windowed_mouse", !_windowed_mouse.value);
     break;
 
@@ -1358,7 +1368,7 @@ void M_Options_Draw (void)
   M_DrawSlider (220, 72, r);
 
   M_Print (16, 80, "           Mouse Speed");
-  r = (sensitivity.value - 1)/10;
+  r = (sensitivity.value - 0.5)/10.5;	// 0.5 to 11 (2026-11-06)
   M_DrawSlider (220, 80, r);
 
   M_Print (16, 88, "       CD Music Volume");
@@ -1375,11 +1385,17 @@ void M_Options_Draw (void)
   M_Print (16, 112, "          Invert Mouse");
   M_DrawCheckbox (220, 112, m_pitch.value < 0);
 
-  M_Print (16, 120, "            Lookspring");
-  M_DrawCheckbox (220, 120, lookspring.value);
+  M_Print (16, 120, "            Mouse Look");	// 2026-11-06
+  M_DrawCheckbox (220, 120, freelook.value);
 
-  M_Print (16, 128, "            Lookstrafe");
-  M_DrawCheckbox (220, 128, lookstrafe.value);
+  M_Print (16, 128, "            Lookspring");
+  M_DrawCheckbox (220, 128, lookspring.value);
+
+  M_Print (16, 136, "            Lookstrafe");
+  M_DrawCheckbox (220, 136, lookstrafe.value);
+
+  M_Print (16, 144, "         Video Options");	// 2026-11-06: the Video Modes page
+  M_Print (16, 152, "         Sound Options");	// 2026-11-06: the Sound page
 
   //if (vid_menudrawfn)
     //M_Print (16, 128, "	  Video Options");
@@ -1387,8 +1403,8 @@ void M_Options_Draw (void)
 #ifdef _WIN32
   if (modestate == MS_WINDOWED)
   {
-    M_Print (16, 144, "		    Use Mouse");
-    M_DrawCheckbox (220, 144, _windowed_mouse.value);
+    M_Print (16, 176, "		    Use Mouse");
+    M_DrawCheckbox (220, 176, _windowed_mouse.value);
   }
 #endif
 
@@ -1398,7 +1414,7 @@ void M_Options_Draw (void)
      sidebar at x=16. The longest label the menu ships with is 18 characters,
      starting at x=48, which is why x=56 here is safe at any y. */
   if (options_cursor == 5)
-    M_Print (56, 152, "applies on restart");
+    M_Print (56, 168, "applies on restart");	// below the last row (2026-11-06)
 
 	// cursor
   	M_DrawCharacter (200, 32 + options_cursor*8, 12+((int)(realtime*4)&1));
@@ -1430,9 +1446,12 @@ void M_Options_Key (int k)
     case 3:
       Cbuf_AddText ("exec default.cfg\n");
       break;
-    //case 13:
-      //M_Menu_Video_f ();
-      //break;
+    case 14:	// 2026-11-06
+      M_Menu_Video_f ();
+      break;
+    case 15:	// 2026-11-06
+      M_Menu_Sound_f ();
+      break;
     default:
       M_AdjustSliders (1);
       break;
@@ -1463,14 +1482,15 @@ void M_Options_Key (int k)
   }
 
   /* 2026-11-06: id skipped row 12 here, its "Video Options" without a video
-   * menu. Since "Customize details" moved every row down one, row 12 is
-   * Lookstrafe, which the skip made unreachable going down. Gone. */
+   * menu. Since "Customize details" moved every row down one, row 12 was
+   * Lookstrafe (13 since Mouse Look), which the skip made unreachable going
+   * down. Gone. */
 
 #ifdef _WIN32
-  if ((options_cursor == 14) && (modestate != MS_WINDOWED))
+  if ((options_cursor == 17) && (modestate != MS_WINDOWED))
   {
     if (k == K_UPARROW)
-      options_cursor = 12;
+      options_cursor = 15;
     else
       options_cursor = 0;
   }
@@ -1673,28 +1693,398 @@ void M_Keys_Key (int k)
 }
 
 //=============================================================================
-/* VIDEO MENU */
+/* SOUND MENU (2026-11-06)
 
-/*
+Options > Sound Options: the device (Paula, AHI or off), AHI's mode, the
+mixing rate and Paula's channel swap. The changes collect until Apply (or
+leaving with Escape), which saves them (snd_device, snd_ahimode, snd_rate,
+snd_swap) and restarts the sound in the running game (S_Restart). Rows
+that do not apply to the chosen device say n/a and the cursor skips them.
+*/
+
+#define SOUND_ROWS	5		// device, AHI mode, rate, swap, Apply
+#define SOUND_MAXMODES	32
+
+static const int	sound_rowy[SOUND_ROWS] = {32, 40, 56, 64, 80};
+static const int	sound_rates_paula[4] = {11025, 16000, 22050, 28000};
+static const int	sound_rates_ahi[4] = {11025, 22050, 32000, 44100};
+static const char	*sound_devnames[3] = {"Paula", "AHI", "off"};
+
+static int		sound_cursor;
+static int		sound_dev;		// 0 Paula, 1 AHI, 2 off (chosen, not yet applied)
+static int		sound_mode;		// index into sound_modeids, 0 = AHI's default
+static int		sound_rate;		// index into the device's rate table
+static int		sound_swap;
+static qboolean		sound_changed;
+static int		sound_nummodes;
+static unsigned long	sound_modeids[SOUND_MAXMODES + 1];
+static char		sound_modenames[SOUND_MAXMODES + 1][SND_AHINAME];
+
+static const int *Sound_Rates (int dev)
+{
+	return (dev == 1) ? sound_rates_ahi : sound_rates_paula;
+}
+
+static int Sound_NearestRate (int dev, int hz)
+{
+	const int	*r;
+	int		i, best, d, bestd;
+
+	r = Sound_Rates (dev);
+	best = 0;
+	bestd = 1 << 30;
+
+	for (i = 0; i < 4; i++)
+	{
+		d = abs (r[i] - hz);
+
+		if (d < bestd)
+		{
+			bestd = d;
+			best = i;
+		}
+	}
+
+	return best;
+}
+
+static qboolean Sound_RowUsed (int row)
+{
+	switch (row)
+	{
+		case 1:	return sound_dev == 1;		// AHI mode
+		case 2:	return sound_dev != 2;		// rate
+		case 3:	return sound_dev == 0;		// Paula's swap
+	}
+
+	return true;
+}
+
+void M_Menu_Sound_f (void)
+{
+	unsigned long	id;
+	int		i;
+
+	key_dest = key_menu;
+	m_state = m_sound;
+	m_entersound = true;
+
+	// AHI's modes, the list read again on each visit
+	sound_modeids[0] = 0;
+	strcpy (sound_modenames[0], "AHI's default (AHI prefs)");
+	sound_nummodes = 1 + SND_AHIListModes (&sound_modeids[1], &sound_modenames[1], SOUND_MAXMODES);
+
+	// the page starts from the saved settings
+	if (!Q_strcasecmp (snd_device.string, "ahi"))
+		sound_dev = 1;
+	else if (!Q_strcasecmp (snd_device.string, "off"))
+		sound_dev = 2;
+	else
+		sound_dev = 0;
+
+	id = strtoul (snd_ahimode.string, NULL, 0);
+	sound_mode = 0;
+
+	for (i = 1; i < sound_nummodes; i++)
+	{
+		if (sound_modeids[i] == id)
+			sound_mode = i;
+	}
+
+	sound_rate = Sound_NearestRate (sound_dev, (int)snd_rate.value);
+	sound_swap = (snd_swap.value != 0);
+	sound_changed = false;
+	sound_cursor = 0;
+}
+
+static void Sound_Apply (void)
+{
+	char	v[32];
+
+	Cvar_Set ("snd_device", sound_dev == 1 ? "ahi" : (sound_dev == 2 ? "off" : "paula"));
+	sprintf (v, "%lu", sound_modeids[sound_mode]);
+	Cvar_Set ("snd_ahimode", v);
+	sprintf (v, "%d", Sound_Rates (sound_dev)[sound_rate]);
+	Cvar_Set ("snd_rate", v);
+	Cvar_Set ("snd_swap", sound_swap ? "1" : "0");
+
+	S_Restart ();
+	sound_changed = false;
+}
+
+void M_Sound_Draw (void)
+{
+	qpic_t	*p;
+	char	v[64];
+	int	inuse;
+
+	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp"));
+	p = Draw_CachePic ("gfx/p_option.lmp");
+	M_DrawPic ((320 - p->width) / 2, 4, p);
+
+	M_Print (16, 32, "          Sound device");
+	M_Print (220, 32, (char *)sound_devnames[sound_dev]);
+
+	M_Print (16, 40, "              AHI mode");
+
+	if (Sound_RowUsed (1))
+	{
+		strncpy (v, sound_modenames[sound_mode], 32);
+		v[32] = 0;
+		M_PrintWhite (56, 48, v);
+	}
+	else
+		M_Print (220, 40, "n/a");
+
+	M_Print (16, 56, "           Mixing rate");
+
+	if (Sound_RowUsed (2))
+	{
+		sprintf (v, "%d Hz", Sound_Rates (sound_dev)[sound_rate]);
+		M_Print (220, 56, v);
+	}
+	else
+		M_Print (220, 56, "n/a");
+
+	M_Print (16, 64, "         Swap channels");
+
+	if (Sound_RowUsed (3))
+		M_Print (220, 64, sound_swap ? "on" : "off");
+	else
+		M_Print (220, 64, "n/a");
+
+	M_Print (16, 80, "                 Apply");
+
+	// what runs now
+	inuse = SND_DeviceInUse ();
+
+	if (inuse && shm)
+		sprintf (v, "Now: %s, %d Hz", inuse == 2 ? "AHI" : "Paula", shm->speed);
+	else
+		strcpy (v, COM_CheckParm ("-nosound") ? "Now: off (-nosound)" : "Now: off");
+
+	M_PrintWhite (56, 104, v);
+	M_Print (56, 120, sound_changed ? "Apply restarts the sound" : "");
+	M_Print (56, 128, "Esc applies and goes back");
+
+	M_DrawCharacter (200, sound_rowy[sound_cursor], 12 + ((int)(realtime * 4) & 1));
+}
+
+static void Sound_Change (int dir)
+{
+	int	hz;
+
+	switch (sound_cursor)
+	{
+		case 0:		// device: Paula, AHI, off
+			hz = Sound_Rates (sound_dev)[sound_rate];
+			sound_dev = (sound_dev + 3 + dir) % 3;
+			sound_rate = Sound_NearestRate (sound_dev, hz);
+			break;
+
+		case 1:
+			sound_mode = (sound_mode + sound_nummodes + dir) % sound_nummodes;
+			break;
+
+		case 2:
+			sound_rate = (sound_rate + 4 + dir) % 4;
+			break;
+
+		case 3:
+			sound_swap = !sound_swap;
+			break;
+
+		default:
+			return;
+	}
+
+	sound_changed = true;
+	S_LocalSound ("misc/menu3.wav");
+}
+
+void M_Sound_Key (int k)
+{
+	switch (k)
+	{
+		case K_ESCAPE:
+			if (sound_changed)
+				Sound_Apply ();
+
+			M_Menu_Options_f ();
+			break;
+
+		case K_UPARROW:
+			S_LocalSound ("misc/menu1.wav");
+
+			do
+			{
+				if (--sound_cursor < 0)
+					sound_cursor = SOUND_ROWS - 1;
+			} while (!Sound_RowUsed (sound_cursor));
+			break;
+
+		case K_DOWNARROW:
+			S_LocalSound ("misc/menu1.wav");
+
+			do
+			{
+				if (++sound_cursor >= SOUND_ROWS)
+					sound_cursor = 0;
+			} while (!Sound_RowUsed (sound_cursor));
+			break;
+
+		case K_LEFTARROW:
+			Sound_Change (-1);
+			break;
+
+		case K_RIGHTARROW:
+			Sound_Change (1);
+			break;
+
+		case K_ENTER:
+			if (sound_cursor == SOUND_ROWS - 1)
+			{
+				Sound_Apply ();
+				S_LocalSound ("misc/menu2.wav");
+			}
+			else
+				Sound_Change (1);
+			break;
+	}
+}
+
+//=============================================================================
+/* VIDEO MENU (2026-11-06)
+
+Options > Video Options: the screen modes the library offers (VID_ListModes,
+5:4 to 16:9), in columns as software Quake's; the running one in white.
+Enter switches live (VID_SwitchMode: the library opens the new screen and
+keeps the textures) and saves the choice (vid_width, vid_height,
+vid_modeid) for the next start. A library that cannot switch keeps the size
+and says so in the console; the saved choice applies at the next start.
+*/
+
+#define VIDEO_MAXMODES	40
+#define VIDEO_COLS	3
+
+static vidmode_t	video_modes[VIDEO_MAXMODES];
+static int		video_nummodes, video_cursor;
+
+static int Video_Rows (void)
+{
+	return (video_nummodes + VIDEO_COLS - 1) / VIDEO_COLS;
+}
+
 void M_Menu_Video_f (void)
 {
+	int	w, h, i;
+
 	key_dest = key_menu;
 	m_state = m_video;
 	m_entersound = true;
-}
 
+	video_nummodes = VID_ListModes (video_modes, VIDEO_MAXMODES);
+	VID_GetSize (&w, &h);
+	video_cursor = 0;
+
+	for (i = 0; i < video_nummodes; i++)
+	{
+		if (video_modes[i].width == w && video_modes[i].height == h)
+			video_cursor = i;
+	}
+}
 
 void M_Video_Draw (void)
 {
-	(*vid_menudrawfn) ();
+	qpic_t	*p;
+	char	v[40];
+	int	i, x, y, w, h, rows;
+
+	p = Draw_CachePic ("gfx/vidmodes.lmp");
+	M_DrawPic ((320 - p->width) / 2, 4, p);
+
+	VID_GetSize (&w, &h);
+	rows = Video_Rows ();
+
+	for (i = 0; i < video_nummodes; i++)
+	{
+		x = 24 + (i / rows) * 104;
+		y = 36 + (i % rows) * 8;
+		sprintf (v, "%dx%d", video_modes[i].width, video_modes[i].height);
+
+		if (video_modes[i].width == w && video_modes[i].height == h)
+			M_PrintWhite (x, y, v);
+		else
+			M_Print (x, y, v);
+
+		if (i == video_cursor)
+			M_DrawCharacter (x - 12, y, 12 + ((int)(realtime * 4) & 1));
+	}
+
+	y = 36 + rows * 8 + 12;
+	sprintf (v, "Running: %dx%d, 16 bit", w, h);
+	M_PrintWhite (48, y, v);
+	M_Print (48, y + 16, "Enter switches the mode");
+	M_Print (48, y + 24, "Esc goes back");
 }
 
-
-void M_Video_Key (int key)
+void M_Video_Key (int k)
 {
-	(*vid_menukeyfn) (key);
+	char	v[24];
+	int	rows;
+
+	rows = Video_Rows ();
+
+	if (video_nummodes == 0 && k != K_ESCAPE)
+		return;
+
+	switch (k)
+	{
+		case K_ESCAPE:
+			M_Menu_Options_f ();
+			break;
+
+		case K_UPARROW:
+			S_LocalSound ("misc/menu1.wav");
+			video_cursor = (video_cursor + video_nummodes - 1) % video_nummodes;
+			break;
+
+		case K_DOWNARROW:
+			S_LocalSound ("misc/menu1.wav");
+			video_cursor = (video_cursor + 1) % video_nummodes;
+			break;
+
+		case K_LEFTARROW:
+			S_LocalSound ("misc/menu1.wav");
+			video_cursor -= rows;
+
+			if (video_cursor < 0)
+				video_cursor += rows * VIDEO_COLS;
+
+			while (video_cursor >= video_nummodes)
+				video_cursor -= rows;
+			break;
+
+		case K_RIGHTARROW:
+			S_LocalSound ("misc/menu1.wav");
+			video_cursor += rows;
+
+			if (video_cursor >= video_nummodes)
+				video_cursor %= rows;
+			break;
+
+		case K_ENTER:
+			S_LocalSound ("misc/menu2.wav");
+			VID_SwitchMode (video_modes[video_cursor].width, video_modes[video_cursor].height);
+			sprintf (v, "%d", video_modes[video_cursor].width);
+			Cvar_Set ("vid_width", v);
+			sprintf (v, "%d", video_modes[video_cursor].height);
+			Cvar_Set ("vid_height", v);
+			sprintf (v, "%lu", video_modes[video_cursor].id);
+			Cvar_Set ("vid_modeid", v);
+			break;
+	}
 }
-*/
 
 //=============================================================================
 /* HELP MENU */
@@ -3313,9 +3703,13 @@ void M_Draw (void)
 			M_Keys_Draw ();
 			break;
 
-		//case m_video:
-			//M_Video_Draw ();
-			//break;
+		case m_sound:	// 2026-11-06
+			M_Sound_Draw ();
+			break;
+
+		case m_video:	// 2026-11-06
+			M_Video_Draw ();
+			break;
 
 		case m_help:
 			M_Help_Draw ();
@@ -3412,9 +3806,9 @@ void M_Keydown (int key)
 			M_Keys_Key (key);
 			return;
 
-		//case m_video:
-			//M_Video_Key (key);
-			//return;
+		case m_video:	// 2026-11-06
+			M_Video_Key (key);
+			return;
 
 		case m_help:
 			M_Help_Key (key);
@@ -3443,6 +3837,10 @@ void M_Keydown (int key)
 		case m_search:
 			M_Search_Key (key);
 			break;
+
+		case m_sound:	// 2026-11-06
+			M_Sound_Key (key);
+			return;
 
 		case m_slist:
 			M_ServerList_Key (key);

@@ -219,7 +219,12 @@ void S_Init (void)
 		shm->buffer = Hunk_AllocName(1<<16, "shmbuf");
 	}
 
-	Con_Printf ("Sound sampling rate: %i\n", shm->speed);
+	if (shm)	// 2026-11-06: NULL when the device did not start
+		Con_Printf ("Sound sampling rate: %i\n", shm->speed);
+
+#ifdef AMIGAOS
+	Cmd_AddCommand ("snd_restart", S_Restart);
+#endif
 
 	// provides a tick sound until washed clean
 	// if (shm->buffer)
@@ -252,6 +257,44 @@ void S_Shutdown(void)
 		SNDDMA_Shutdown();
 	}
 }
+
+#ifdef AMIGAOS
+/*
+================
+S_Restart
+
+2026-11-06: the Sound page's Apply (and snd_restart): the device stopped
+and started again with the current settings (snd_device, snd_ahimode,
+snd_rate, snd_swap; the command line counted only for the first start).
+The cached sounds were converted to the old rate and sample size when they
+were loaded, so they go; each is loaded again the next time it plays.
+================
+*/
+void S_Restart (void)
+{
+	int	i;
+	sfx_t	*sfx;
+
+	if (!snd_initialized || fakedma)
+		return;
+
+	S_StopAllSounds (true);
+	S_Shutdown ();
+
+	for (i = 0, sfx = known_sfx; i < num_sfx; i++, sfx++)
+	{
+		if (sfx->cache.data)
+			Cache_Free (&sfx->cache);
+	}
+
+	S_Startup ();
+
+	if (shm)
+		Con_Printf ("Sound sampling rate: %i\n", shm->speed);
+
+	S_StopAllSounds (true);	// a clear buffer on the new device
+}
+#endif
 
 
 // =======================================================================

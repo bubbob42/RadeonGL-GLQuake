@@ -186,6 +186,8 @@ CL_SignonReply
 An svc_signonnum has been received, perform a client side setup
 =====================
 */
+void RGL_ProfStart (void);	/* RadeonGL: sys_amiga.c, QuakeProfile */
+
 void CL_SignonReply (void)
 {
 	char  str[8192];
@@ -219,6 +221,11 @@ void CL_SignonReply (void)
     
 		case 4:
 			SCR_EndLoadingPlaque ();    // allow normal screen updates
+			/* RadeonGL, 2026-11-07: QuakeProfile profiles played maps
+			 * too, from the first map's start to the quit (a timedemo
+			 * starts it in cl_demo.c) */
+			if (!cls.demoplayback)
+				RGL_ProfStart ();
 			break;
 	}
 }

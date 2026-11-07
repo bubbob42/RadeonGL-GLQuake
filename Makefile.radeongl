@@ -43,8 +43,11 @@ QDEFS    := -DLITFILES -DGLOWEFFECTS -DFASTBOPS -DGLQUAKE -DAMIGA -DAMIGAOS \
 QINC     := -I$(QSRC)/gcc_compat -I$(SDK)/minigl-shared-library/include -Iglsmoke \
             -Isdk/ahi/include -Isdk/cgx/include \
             -include $(QSRC)/minigl_client_compat.h
+# -falign-functions/-falign-loops=16 (2026-11-06): functions and loops on a
+# cache line of the 040/060 -- MEASURED on the A4000D (68060), ABBA: demo1
+# +0.3% at 320 x 240, +0.7% at 1280 x 720, demo2 +1.4%; 3% larger binary
 QOPT     := -O2 -fno-strict-aliasing -fno-builtin-cos -fno-builtin-sin \
-            -finline-functions
+            -finline-functions -falign-functions=16 -falign-loops=16
 QCFLAGS  := -std=gnu99 -noixemul $(QCPUFLAG) -m68881 $(QOPT) $(QDEFS) $(QINC)
 QASFLAGS := -m68020 -m68881
 

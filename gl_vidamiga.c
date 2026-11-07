@@ -89,9 +89,17 @@ unsigned char rawkeyconv[] =
 	K_SPACE,K_BACKSPACE,K_TAB,K_ENTER,K_ENTER,K_ESCAPE,K_DEL,0,
 	0,0,'-',0,K_UPARROW,K_DOWNARROW,K_RIGHTARROW,K_LEFTARROW,
 	K_F1,K_F2,K_F3,K_F4,K_F5,K_F6,K_F7,K_F8,K_F9,K_F10,'(',')','/','*','+',K_PAUSE,
-	K_SHIFT,K_SHIFT,0,K_CTRL,K_ALT,K_ALT,0,0,
-	K_MOUSE1,K_MOUSE2,K_MOUSE3
+	/* 2026-11-06: both Amiga keys are K_AMIGA (they were 0: no key, so the
+	 * Amiga key could not be bound and Amiga-V never pasted) */
+	K_SHIFT,K_SHIFT,0,K_CTRL,K_ALT,K_ALT,K_AMIGA,K_AMIGA,
+	K_MOUSE1,K_MOUSE2,K_MOUSE3,0,0,0,0,0,
+	/* 2026-11-06: all 128 raw codes. The table ended at $6A, so NewMouse's
+	 * wheel codes ($7A/$7B) read whatever followed it: no key with a name,
+	 * the wheel could not be bound ("isn't a valid key"). */
+	0,0,0,0,0,0,0,0,0,0,K_MWHEELUP,K_MWHEELDOWN,0,0,0,0
 };
+/* indexed with (code & 0x7f): a table one short fails to compile here */
+typedef char rawkeyconv_has_128[(sizeof(rawkeyconv) == 128) ? 1 : -1];
 
 struct Window *QuakeWindow = NULL;
 
@@ -137,8 +145,8 @@ qboolean cachetris = true;		// Cowcat
 qboolean fixboundbox = false;		// Cowcat
 
 static int scr_width, scr_height;
-static float width;
-static qboolean UPDATE = FALSE;	 
+static qboolean UPDATE = FALSE;	// a new size waits for the end of the frame (VID_SwitchMode)
+static int pending_w, pending_h;
 static GLfloat gl_polyoffset = 0.0;
 
 void VID_MenuDraw (void);
@@ -171,6 +179,24 @@ float	gldepthmin, gldepthmax;
 
 cvar_t	gl_ztrick = {"gl_ztrick","0"};
 cvar_t	gl_width = {"gl_width","320"};
+
+/* 2026-11-06: the Video Modes page's settings (vid.h), saved; 0 = not set */
+cvar_t	vid_width = {"vid_width", "0", true};
+cvar_t	vid_height = {"vid_height", "0", true};
+cvar_t	vid_bpp = {"vid_bpp", "16", true};
+cvar_t	vid_buffers = {"vid_buffers", "3", true};
+cvar_t	vid_modeid = {"vid_modeid", "0", true};
+cvar_t	vid_conscale = {"vid_conscale", "0", true};	// 2D scale: 0 automatic, else 1, 2, 3 ...
+
+void VID_RegisterCvars (void)
+{
+	Cvar_RegisterVariable (&vid_width);
+	Cvar_RegisterVariable (&vid_height);
+	Cvar_RegisterVariable (&vid_bpp);
+	Cvar_RegisterVariable (&vid_buffers);
+	Cvar_RegisterVariable (&vid_modeid);
+	Cvar_RegisterVariable (&vid_conscale);
+}
 
 //cvar_t _windowed_mouse = {"_windowed_mouse", "1", true}; 
 //cvar_t  freemouse = {"freemouse","0",false};
@@ -668,23 +694,27 @@ void GL_EndRendering (void)
 	/* Was '#if 0' (Cowcat: "this really doesn't work well"). Enabled now
 	 * that MiniGLV3D's MGLResizeContext keeps the textures and all render
 	 * state across the resize, as the original MiniGL did. */
+	/* 2026-11-06: a new size, live (VID_SwitchMode: the Video Modes page, and
+	 * gl_width): the library opens a new screen and keeps the textures
+	 * (mglResizeContext). Any size now, not only 4:3; a library that
+	 * refuses keeps the old size, and so does GLQuake. */
 	if (UPDATE) 
 	{
-		gl_width.value = width;
-		Con_Printf("CHANGED ------------------------------ %4.0f\n",gl_width.value);
-   
-		scr_width = (int)gl_width.value;
-		scr_height = scr_width * 3 / 4;
-		vid.conwidth = scr_width;
-		vid.conwidth &= 0xfff8; // make it a multiple of eight
+		int	ow, oh;
 
-		if (vid.conwidth < 320)
-			vid.conwidth = 320;
+		ow = scr_width;
+		oh = scr_height;
 
-		vid.conheight = vid.conwidth * 3 / 4;
+		if (mglResizeContext(pending_w, pending_h))
+		{
+			scr_width = pending_w;
+			scr_height = pending_h;
+			Con_Printf("Video mode %dx%d\n", scr_width, scr_height);
+		}
+		else
+			Con_Printf("Video mode %dx%d: the library kept %dx%d\n", pending_w, pending_h, ow, oh);
 
-		vid.width = vid.conwidth;
-		vid.height = vid.conheight;
+		VID_SetSizes ();
 
 		/* Draw_Init (gl_draw.c) stamped the resolution it loaded at into the
 		 * console background pic, and Draw_ConsoleBackground draws it at that
@@ -697,8 +727,6 @@ void GL_EndRendering (void)
 			conback->width = vid.width;
 			conback->height = vid.height;
 		}
- 
-		mglResizeContext(vid.width, vid.height);
 
 		/* The reopened display has a NEW input window, and the driver opens
 		 * it without IDCMP -- it has no UserPort until we ask for one, and
@@ -710,6 +738,11 @@ void GL_EndRendering (void)
 	#else
 			ModifyIDCMP(QuakeWindow, IDCMP_RAWKEY|IDCMP_MOUSEBUTTONS);
 	#endif
+		/* 2026-11-06: the key that asked for the switch (the menu's Enter)
+		 * went up in the closed window: Quake would take the next press of
+		 * it for an autorepeat and drop it (MEASURED on the A4000D: the
+		 * first Enter after a switch was lost) */
+		Key_ClearStates ();
 		vid.recalc_refdef = 1;
 
 		if (gl_lockmode == MGL_LOCK_MANUAL)
@@ -805,17 +838,153 @@ void ChangeLockMode_f (void)
 	mglLockMode(gl_lockmode);
 }
 
+/* gl_width W [H]: a new size (H: W * 3 / 4 if not given, as before) */
 void ChangeVideoMode_f (void)
 {
+	int	w;
+
 	if (Cmd_Argc() == 1)
 	{
-		Con_Printf ("GL_WIDTH is %4.0f\n", gl_width.value);
+		Con_Printf ("GL_WIDTH is %d (%dx%d)\n", scr_width, scr_width, scr_height);
 		return;
 	}
 
-	width = Q_atof(Cmd_Argv(1));
+	w = Q_atoi(Cmd_Argv(1));
+	VID_SwitchMode (w, (Cmd_Argc() > 2) ? Q_atoi(Cmd_Argv(2)) : w * 3 / 4);
+}
 
-	if (width != gl_width.value) UPDATE = TRUE;
+/* 2026-11-06: vid's sizes from scr_width x scr_height (VID_Init and every
+ * live switch) */
+void VID_SetSizes (void)
+{
+	int	k;
+
+	/* 2026-11-06: the 2D (menus, console, status bar) at a whole multiple
+	 * of the screen's pixels, so that the 8-pixel font stays sharp and
+	 * readable: the largest k that keeps the 2D at least 640 wide and 200
+	 * high (1280x720: 640x360; 1600x1200: 800x600; 1024x768: 1:1), or
+	 * vid_conscale's k. The 3D view keeps every pixel (R_SetupGL scales). */
+	k = (int)vid_conscale.value;
+
+	if (k < 1)
+	{
+		k = scr_width / 640;
+
+		if (k < 1)
+			k = 1;
+	}
+
+	while (k > 1 && (scr_width / k < 320 || scr_height / k < 200))
+		k--;
+
+	vid.conwidth = scr_width / k;
+	vid.conwidth &= 0xfff8; // make it a multiple of eight
+
+	if (vid.conwidth < 320)
+		vid.conwidth = 320;
+
+	vid.conheight = scr_height / k;
+	vid.width = vid.conwidth;
+	vid.height = vid.conheight;
+	vid.aspect = ((float)vid.height / (float)vid.width) * (320.0 / 240.0);
+	gl_width.value = vid.width;
+}
+
+/* 2026-11-06: w x h from the end of this frame on (GL_EndRendering) */
+void VID_SwitchMode (int w, int h)
+{
+	if (w < 320 || h < 200 || w > 2048 || h > 2048)
+	{
+		Con_Printf ("Video mode %dx%d: not offered\n", w, h);
+		return;
+	}
+
+	if (w == scr_width && h == scr_height)
+		return;
+
+	pending_w = w;
+	pending_h = h;
+	UPDATE = TRUE;
+}
+
+void VID_GetSize (int *w, int *h)
+{
+	*w = scr_width;
+	*h = scr_height;
+}
+
+/* 2026-11-06, the Video Modes page: the library's screen modes
+ * (mglGetSupportedScreenModes) between 5:4 and 16:9 (half-height modes such
+ * as 640x200 would squash the picture), each size once, sorted; a library
+ * without the call gets the common sizes. */
+static vidmode_t *list_out;
+static int list_n, list_max;
+
+static GLboolean CollectMode (MGLScreenMode *m)
+{
+	float	r;
+	int	i;
+
+	if (list_n >= list_max)
+		return GL_TRUE;		// enough: stop
+
+	if (m->width < 320 || m->height < 200 || m->width > 2048 || m->height > 2048)
+		return GL_FALSE;
+
+	r = (float)m->width / (float)m->height;
+
+	if (r < 1.2f || r > 1.9f)
+		return GL_FALSE;
+
+	for (i = 0; i < list_n; i++)
+	{
+		if (list_out[i].width == m->width && list_out[i].height == m->height)
+			return GL_FALSE;
+	}
+
+	list_out[list_n].width = m->width;
+	list_out[list_n].height = m->height;
+	list_out[list_n].id = (unsigned long)m->id;
+	list_n++;
+	return GL_FALSE;
+}
+
+int VID_ListModes (vidmode_t *modes, int max)
+{
+	static const short common[][2] = {{320, 240}, {400, 300}, {512, 384}, {640, 400}, {640, 480},
+					  {800, 600}, {1024, 768}, {1280, 720}, {1280, 1024}};
+	vidmode_t	t;
+	int		i, j;
+
+	list_out = modes;
+	list_n = 0;
+	list_max = max;
+	mglGetSupportedScreenModes (CollectMode);
+
+	if (list_n == 0)
+	{
+		for (i = 0; i < (int)(sizeof(common) / sizeof(common[0])) && i < max; i++)
+		{
+			modes[i].width = common[i][0];
+			modes[i].height = common[i][1];
+			modes[i].id = 0;
+		}
+
+		list_n = i;
+	}
+
+	for (i = 1; i < list_n; i++)	// by width, then height
+	{
+		t = modes[i];
+
+		for (j = i; j > 0 && (modes[j - 1].width > t.width
+			|| (modes[j - 1].width == t.width && modes[j - 1].height > t.height)); j--)
+			modes[j] = modes[j - 1];
+
+		modes[j] = t;
+	}
+
+	return list_n;
 }
 
 void ChangePolyOffset_f (void)
@@ -970,7 +1139,10 @@ void VID_Init(unsigned char *palette)
 	if (i = COM_CheckParm("-nocachetris")) cachetris = false; // Cowcat
 	if (i = COM_CheckParm("-fixboundbox")) fixboundbox = true; // Cowcat
 
-	// number of buffers
+	// number of buffers: the saved Video Modes setting, the command line wins
+	if (vid_buffers.value == 2 || vid_buffers.value == 3)
+		numb = (int)vid_buffers.value;
+
 	if ((i = COM_CheckParm("-buf")) != 0)
 		numb = Q_atoi(com_argv[i+1]);
   
@@ -989,6 +1161,18 @@ void VID_Init(unsigned char *palette)
 	// width
 	scr_width = 320; //gl_width.value;
 	scr_height = scr_width * 3 / 4;
+
+	/* 2026-11-06: the saved Video Modes choice (vid_width, vid_height,
+	 * vid_bpp; config.cfg ran before VID_Init) -- -width, -height and -bpp
+	 * on the command line win for their run */
+	if (vid_width.value >= 320)
+	{
+		scr_width = (int)vid_width.value;
+		scr_height = (vid_height.value >= 200) ? (int)vid_height.value : scr_width * 3 / 4;
+	}
+
+	if (vid_bpp.value == 15 || vid_bpp.value == 16)
+		bpp = (int)vid_bpp.value;
   
 	if ((i = COM_CheckParm("-width")) != 0)
 	{
@@ -1021,22 +1205,10 @@ void VID_Init(unsigned char *palette)
 	vid.colormap = host_colormap;
 	vid.fullbright = 256 - LittleLong (*((int *)vid.colormap + 2048));
 
-	vid.conwidth = scr_width;
-	vid.conwidth &= 0xfff8; // make it a multiple of eight
-
-	if (vid.conwidth < 320)
-		vid.conwidth = 320;
-
-	// pick a conheight that matches with correct aspect
-	vid.conheight = scr_height;
-
-	vid.width = vid.conwidth;
-	vid.height = vid.conheight;
+	VID_SetSizes ();	// vid.conwidth ... vid.aspect from scr_width, scr_height
 	vid.maxwarpwidth = WARP_WIDTH;
 	vid.maxwarpheight = WARP_HEIGHT;
-	vid.aspect = ((float)vid.height / (float)vid.width) * (320.0 / 240.0);
 	vid.numpages = 2 + numb - 2;
-	gl_width.value = vid.width;
 
 #ifdef MINIGL_SHARED_CLIENT
 	/* RadeonGL: open minigl.library and take its ABI-5 dispatch table;
@@ -1099,7 +1271,7 @@ void VID_Init(unsigned char *palette)
 
 	Con_Printf("Creating context...\n");
 
-	if (mglCreateContext(0,0, vid.width, vid.height))
+	if (mglCreateContext(0,0, scr_width, scr_height))	// the screen's pixels, not the 2D's units (vid_conscale)
 	{
 #if defined(MGLV3D_EXITPOINT) && MGLV3D_EXITPOINT == 1
 		VID_Shutdown();
