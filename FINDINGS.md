@@ -394,6 +394,14 @@ about 5%: demo1 31.1 fps against 32.9).
   benchmark 48.22 -> 48.69 fps (+1.0%, two binaries, ABBA), the checksum
   unchanged. Elsewhere such executed padding is 0.3% of the samples (the
   060 pairs it): no flag change.
+- **MOVE16 into video RAM** (RadeonGL `RadeonGLMove16`, probe
+  `Move16Bench`; 2026-11-07, the user at the A4000D): bursts are taken --
+  no hang, every read-back right, and MOVE16 reads a source still dirty in
+  the 060's copyback cache right -- but they arrive as single cycles:
+  1 MB longword stores 7.7 MB/s, MOVE16 7.5 (0.97 x). demo1 with it on
+  29.0/29.0 against 29.1/29.1 s (noise; 96.6% of the copied dwords went
+  as lines). The bus path splits the lines; kept off by default for
+  boards that burst (a Firestorm, later).
 - **Tried and left:** a cache for `SV_SetIdealPitch` (its traces also meet
   doors and platforms, which move while the player stands: not exact).
   RadeonGL's `struct Core` (70 KB: the upload cache's queue and slots in
