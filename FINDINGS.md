@@ -58,6 +58,39 @@ MOUSE; the joystick in port 1 is still found. Any `SetJoyPortAttrs()` or
 lowlevel.library's until the next boot (VBList); that alone does not stop
 the mouse.
 
+### Textures missing under water: a compiler bug in the warp loops (2026-11-09)
+
+The user's report: under water the walls lose their textures; a Voodoo
+shows them (timedemo 2). Not the library: RadeonGL's null-card dump of
+demo2's frame 600, drawn by r200view, showed the same flat walls, and the
+fan's vertex data was read one float earlier for each vertex.
+
+The three loops that warp vertices (`R_DrawSequentialPoly` under water,
+`DrawGLWaterPoly`, `DrawGLWaterPolyLightmap`) compiled to a 24-byte step
+instead of 28, with `nv[2]` taken from `v[1]`. The source was right.
+bebbo's own late pass, bbb, turned the load of `v[0]` -- `fdmove.s (a2),fp0`,
+a float widened to a double for `Q_SIN(v[0]*0.05+realtime)` -- into
+`(a2)+` and corrected the offsets after it for 8 bytes (the double); the
+CPU steps 4 (the float). Every release up to 1.2, both CPU builds.
+
+Fix: `v[k]*0.05f` -- the multiply in single precision, so the widening
+happens in a register and bbb leaves the load alone (`gl_rsurf.c`, comment
+above `DrawGLWaterPoly`). The loops are as long as before (fsmul instead
+of fdmul). Checked: the disassembly steps 28 bytes again; RadeonGL's
+`tools/bbb_scan.py` (RTL before and after bbb) finds no other miscounted
+load in GLQuake (it names all 8 in the 1.2 source); frame 600 of demo2
+shows the rock walls; the user confirmed it on the A4000D (timedemo demo2,
+2026-11-09). `PF_findradius` also holds an `fdmove.s (a6)+`, made
+by GCC's own pass and correct. Details: RadeonGL `docs/compiler-usage.md`.
+
+The toolchain has bebbo's own fix since 2026-11-09 (gcc `amiga6`
+`da7ad7f02`, `1b029cd90`, `a78a60f13`). 1.3 is built with it; against the
+same source built with the June compiler, demo2 back to back at three load
+addresses each: 320 x 240 33.43 s against 33.37 s, 1280 x 720 35.40 s
+against 35.37 s -- the same within 0.2% (A4000D, RadeonGL 0.11).
+Measured: 1.3 29.8 / 28.3 fps against 1.2's 29.5 / 24.6 (320 x 240 /
+1280 x 720, one interleaved series).
+
 ## Found, not fixed
 
 - **Mouse movement is lost.** `InputIntCode` (`in_amigamouse68k_gas.s`,

@@ -1,4 +1,4 @@
-# GLQuake for minigl.library -- RadeonGL edition 1.2
+# GLQuake for minigl.library -- RadeonGL edition 1.3
 
 GLQuake for AmigaOS 3.x on a 68040 or 68060, as a `minigl.library` 29.1
 client (dispatch interface ABI 5). It runs on any `minigl.library` 29.1:
@@ -39,6 +39,15 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
 - The Amiga key, the mouse wheel and Amiga-V (paste into the console) work.
 
 **Fixes**
+
+- **Textures under water again** (1.3). Seen from under water, walls and
+  floors were flat colour and stray polygons, where other GLQuakes show
+  them textured. A fault in the compiler's own optimiser (bebbo's GCC 6.5,
+  the "bbb" pass) made the three loops that warp those vertices read each
+  vertex 4 bytes off, in every release up to 1.2. The loops now compute in
+  single precision, which the faulty step leaves alone, and 1.3 is built
+  with a compiler that has bebbo's fix (`FINDINGS.md`). demo2 at
+  1280 x 720 is 15% faster for it: the stray polygons cost fill rate.
 
 - **The left button of a mouse in the mouse port no longer breaks after
   GLQuake** (1.2, reported by midwan): GLQuake set the port to lowlevel's
@@ -167,6 +176,21 @@ RadeonGL with its command check off (`RadeonGLCheck=0`). Frames a second:
 | demo3 | 320 x 240 | 21.4 | 25.6 | **28.9** | +35% |
 | demo3 | 1280 x 720 | 19.9 | 24.0 | **27.5** | +38% |
 
+**demo2 in 1.3** (9 November 2026). 1.2 lost the textures of the
+surfaces seen under water: a compiler fault made it read their vertices 4
+bytes off, so they were drawn as stray polygons, which cost most at high
+resolutions. The fix against 1.2 in one series, both on RadeonGL 0.11,
+vertical sync off, each the mean of three runs at different load
+addresses:
+
+| Demo | Screen | 1.2 | **1.3** | |
+|---|---|---:|---:|---:|
+| demo2 | 320 x 240 | 29.5 | **29.8** | +1% |
+| demo2 | 1280 x 720 | 24.6 | **28.3** | +15% |
+
+The 1.3 release build (the fixed compiler) against the build of that
+series, back to back at three more load addresses: the same within 0.2%.
+
 1.2 was measured with vertical sync off (`+gl_videosync 0`): a timedemo
 measures speed. With it on, the default, a frame waits for the beam; in
 played E1M1 at 800 x 600 that cost about 2%. Real play (the server running
@@ -203,6 +227,8 @@ builds with SAS/C 6.58. `tools/make_launcher_icon.py` draws its icon.
 
 ## History
 
+- **1.3** (9.11.2026): textures under water again (a compiler fault read
+  the warped vertices 4 bytes off); demo2 at 1280 x 720 15% faster.
 - **1.2** (7.11.2026): the start window QuakeLauncher; the Installer puts
   in only the build for the processor; the Video Modes, Sound and Mouse
   Look pages; vertical sync, on by default; 32-bit screens; refused screen
