@@ -166,15 +166,30 @@ GLQuake's `timedemo`, all frames, no sound, on an A4000D: 68060 at 50 MHz
 (CyberStorm MK II), Mediator, Radeon 9200, AmigaOS 3.2, Picasso96 3.6,
 RadeonGL with its command check off (`RadeonGLCheck=0`). Frames a second:
 
-| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | 1.1, RadeonGL 0.7 | **1.2, RadeonGL 0.8** | 1.2 against the source |
-|---|---|---:|---:|---:|---:|
-| demo1 | 320 x 240 | 24.4 | 29.4 | **33.5** | +37% |
-| demo1 | 640 x 480 | 23.7 | 28.7 | **32.5** | +37% |
-| demo1 | 1280 x 720 | 23.3 | 28.0 | **32.9** | +41% |
-| demo2 | 320 x 240 | 21.7 | 28.9 | **30.6** | +41% |
-| demo2 | 1280 x 720 | 17.9 | 23.5 | **26.0** | +45% |
-| demo3 | 320 x 240 | 21.4 | 25.6 | **28.9** | +35% |
-| demo3 | 1280 x 720 | 19.9 | 24.0 | **27.5** | +38% |
+| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | 1.1, RadeonGL 0.7 | 1.2, RadeonGL 0.8 | **1.3, RadeonGL 0.11** | 1.3 against the source |
+|---|---|---:|---:|---:|---:|---:|
+| demo1 | 320 x 240 | 24.4 | 29.4 | 33.5 | **33.0** | +35% |
+| demo1 | 640 x 480 | 23.7 | 28.7 | 32.5 | **32.2** | +36% |
+| demo1 | 1280 x 720 | 23.3 | 28.0 | 32.9 | **31.1** | +33% |
+| demo2 | 320 x 240 | 21.7 | 28.9 | 30.6 | **29.6** | +36% |
+| demo2 | 1280 x 720 | 17.9 | 23.5 | 26.0 | **28.4** | +59% |
+| demo3 | 320 x 240 | 21.4 | 25.6 | 28.9 | **28.6** | +34% |
+| demo3 | 1280 x 720 | 19.9 | 24.0 | 27.5 | **25.4** | +28% |
+
+Each column was measured on its own day with the RadeonGL of its time;
+the 1.3 column on 9 November 2026 after a fresh boot, each figure the mean
+of three runs at different load addresses. Columns from different days
+compare only roughly: the machine itself varies by a few per cent from
+one session to the next (RadeonGL 0.8 ran demo1 at 1280 x 720 at 32.9 fps
+on 7 November and at 30.8 on 9 November). GLQuake also runs about 1.5%
+slower on RadeonGL 0.11 than on 0.8 (interleaved on 9 November: demo1
+29.03 against 29.53 seconds at 320 x 240), but not because the library
+does more: profiles show the same work in the library, and an identical
+routine taking twice the time at another address. The library grew from
+118 to 191 KB, its hot code moved, and on the 68060's small caches
+GLQuake's and the library's hot code now collide more (a change that only
+moved data cost 0.8% by itself). demo3 at 1280 x 720 varied most, 40.9 to
+43.9 seconds. The fair comparison of 1.2 and 1.3 is the one below.
 
 **demo2 in 1.3** (9 November 2026). 1.2 lost the textures of the
 surfaces seen under water: a compiler fault made it read their vertices 4
@@ -191,8 +206,8 @@ addresses:
 The 1.3 release build (the fixed compiler) against the build of that
 series, back to back at three more load addresses: the same within 0.2%.
 
-1.2 was measured with vertical sync off (`+gl_videosync 0`): a timedemo
-measures speed. With it on, the default, a frame waits for the beam; in
+1.2 and 1.3 were measured with vertical sync off (`+gl_videosync 0`): a
+timedemo measures speed. With it on, the default, a frame waits for the beam; in
 played E1M1 at 800 x 600 that cost about 2%. Real play (the server running
 too, which a timedemo skips) gained about 15% more in 1.2.
 
