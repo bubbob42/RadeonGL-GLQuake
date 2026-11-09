@@ -1142,7 +1142,7 @@ void Host_Init (quakeparms_t *parms)
 
 	Con_Printf ("RadeonGL edition " RGLQ_VERSION " (" RGLQ_DATE ")\n");
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
-	Con_Printf ("%4.1f megabyte heap\n", parms->memsize / (1024*1024.0));
+	Con_Printf ("%4.1f megabyte heap at $%08lx\n", parms->memsize / (1024*1024.0), (unsigned long) parms->membase);
   
 	R_InitTextures ();    // needed even for dedicated servers
  
