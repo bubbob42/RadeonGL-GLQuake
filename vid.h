@@ -93,6 +93,8 @@ extern char vid_switch_error[128];		// why the last live switch failed, "" = it 
 void VID_SetVSync (qboolean on);		// ... switched now and saved
 int VID_GetBuffering (void);			// 0: 2, vsync; 1: 3, panning; 2: 3, ChangeScreenBuffer (vid_bufmode)
 void VID_SetBuffering (int mode);		// ... switched (live with RadeonGL's triple-buffer builds) and saved
+int VID_GetSyncMode (void);			// Display sync: 0 off, 1 vsync, 2 ScrollVPort, 3 ChangeScreenBuffer
+void VID_SetSyncMode (int m);			// ... switched (live) and saved
 #endif
 
 void  VID_Init (unsigned char *palette);

@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 #include "quakedef.h"
+#include "rglq_version.h"	// RGLQ_VERSION on the credits page
 
 #ifdef _WIN32
 #include "winquake.h"
@@ -26,7 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //void (*vid_menudrawfn)(void);
 //void (*vid_menukeyfn)(int key);
 
-enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist, m_detail, m_sound} m_state;
+enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_videomodes, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist, m_detail, m_sound} m_state;
 
 void M_Menu_Detail_f (void); //surgeon
 void M_Menu_Main_f (void);
@@ -40,6 +41,7 @@ void M_Menu_Options_f (void);
 void M_Menu_Keys_f (void);
 void M_Menu_Sound_f (void);	// 2026-11-06
 void M_Menu_Video_f (void);	// 2026-11-06
+void M_Menu_VideoModes_f (void);	// 2026-11-13
 void M_Menu_Help_f (void);
 void M_Menu_Quit_f (void);
 void M_Menu_SerialConfig_f (void);
@@ -60,6 +62,7 @@ void M_Net_Draw (void);
 void M_Options_Draw (void);
 void M_Keys_Draw (void);
 void M_Video_Draw (void);
+void M_VideoModes_Draw (void);
 void M_Help_Draw (void);
 void M_Quit_Draw (void);
 void M_SerialConfig_Draw (void);
@@ -80,6 +83,7 @@ void M_Net_Key (int key);
 void M_Options_Key (int key);
 void M_Keys_Key (int key);
 void M_Video_Key (int key);
+void M_VideoModes_Key (int key);
 void M_Help_Key (int key);
 void M_Quit_Key (int key);
 void M_SerialConfig_Key (int key);
@@ -1963,31 +1967,43 @@ void M_Sound_Key (int k)
 }
 
 //=============================================================================
-/* VIDEO MENU (2026-11-06)
+/* VIDEO MENU (2026-11-06; 2026-11-13 three items, the user)
 
-Options > Video Options: the screen modes the library offers (VID_ListModes,
-5:4 to 16:9), in columns as software Quake's; the running one in white.
-Enter switches live (VID_SwitchMode: the library opens the new screen and
-keeps the textures) and saves the choice (vid_width, vid_height,
-vid_modeid) for the next start. A library that cannot switch keeps the size
-and says so in the console; the saved choice applies at the next start.
-Below the modes (2026-11-07): Vertical sync, on or off with Enter, Left or
-Right (VID_SetVSync, saved as vid_vsync); the cursor reaches it with Up and
-Down. Below that (2026-11-12): Buffering -- two buffers copied with vertical
-sync, three by panning (ScrollVPort), or three by ChangeScreenBuffer
-(VID_SetBuffering, saved as vid_bufmode; two buffers by default); Enter and Right go to
-the next, Left to the one before.
+Options > Video Options: Choose screenmode (its own page, below), Display
+sync (off, vsync, ScrollVPort or ChangeScreenBuffer: VID_SetSyncMode, live,
+saved as vid_vsync and vid_bufmode) and Screen depth (16 or 32 bit, saved as
+vid_bpp, from the next start).
 */
 
 #define VIDEO_MAXMODES	40
 #define VIDEO_COLS	3
 
+/* 2026-11-13 (the user): the Video Options page holds three items --
+ * Choose screenmode (a page of its own, the modes as before), Display sync
+ * (one chooser for the four ways a frame reaches the screen: off, vsync,
+ * ScrollVPort, ChangeScreenBuffer -- the two separate items of 1.4 read as
+ * independent, and they are not) and Screen depth (16 or 32 bit, from the
+ * next start: the library keeps a screen's depth while it runs). */
+#define VIDEO_ITEMS	3
+
 static vidmode_t	video_modes[VIDEO_MAXMODES];
 static int		video_nummodes, video_cursor;
+static int		video_item;		// the Video Options page's cursor
 
-/* the Buffering item's ways (VID_GetBuffering): at most 21 characters from
- * column 15, so they end inside the 320 pixels */
-static char		*video_buffering[3] = {"2, vsync", "3, ScrollVPort", "3, ChangeScreenBuffer"};
+/* Display sync's ways (VID_GetSyncMode), each with its cost in brackets
+ * (the user, 2026-11-13): on a line of their own under the label, from x 48
+ * -- the longest, 25 characters, would not fit beside it */
+static char		*video_sync[4] = {"off", "vsync (slightly slower)", "ScrollVPort (slower)",
+					  "ChangeScreenBuffer (slow)"};
+
+/* the items' rows: Display sync's value takes the line under its label */
+static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72};
+
+static char		*video_sync_help[4] = {
+	"Copied at once: fastest, tears",
+	"Copied behind the beam",
+	"3 buffers, the screen panned",
+	"3 buffers, Intuition switches"};
 
 /* white text in lines of up to 34 characters, broken at spaces (the
  * menu's 320 pixels less the margins) */
@@ -2027,14 +2043,136 @@ static int Video_Rows (void)
 	return (video_nummodes + VIDEO_COLS - 1) / VIDEO_COLS;
 }
 
+/* the depth saved for the next start: 16 or 32 */
+static int Video_SavedBpp (void)
+{
+	return (Cvar_VariableValue ("vid_bpp") > 16) ? 32 : 16;
+}
+
 void M_Menu_Video_f (void)
 {
-	int	w, h, i;
-
 	key_dest = key_menu;
 	m_state = m_video;
 	m_entersound = true;
 	vid_switch_error[0] = 0;	// an old refusal is no news
+}
+
+void M_Video_Draw (void)
+{
+	qpic_t	*p;
+	char	v[40];
+	int	w, h, y, m;
+
+	p = Draw_CachePic ("gfx/p_option.lmp");
+	M_DrawPic ((320 - p->width) / 2, 4, p);
+	M_PrintWhite (100, 32, "Video Options");
+
+	VID_GetSize (&w, &h);
+	m = VID_GetSyncMode ();
+
+	M_Print (24, video_item_y[0], "Choose screenmode");
+	sprintf (v, "%dx%d", w, h);
+	M_Print (24 + 18 * 8, video_item_y[0], v);
+	M_Print (24, video_item_y[1], "Display sync");
+	M_Print (48, video_item_y[1] + 8, video_sync[m]);
+	M_Print (24, video_item_y[2], "Screen depth");
+	sprintf (v, "%d bit", Video_SavedBpp ());
+	M_Print (24 + 18 * 8, video_item_y[2], v);
+
+	M_DrawCharacter (24 - 12, video_item_y[video_item], 12 + ((int)(realtime * 4) & 1));
+
+	y = video_item_y[2] + 24;
+	sprintf (v, "Running: %dx%d, %d bit", w, h, VID_GetBpp ());
+	M_PrintWhite (48, y, v);
+
+	// 2026-11-07: a refused switch says why, in place of the help
+	if (vid_switch_error[0])
+	{
+		Video_PrintWrapped (24, y + 16, vid_switch_error);
+		return;
+	}
+
+	switch (video_item)
+	{
+		case 0:
+			M_Print (48, y + 16, "Enter lists the modes");
+			break;
+
+		case 1:
+			M_Print (48, y + 16, video_sync_help[m]);
+			M_Print (48, y + 24, "Enter or arrows: the next");
+			break;
+
+		default:
+			M_Print (48, y + 16, "Enter: 16 or 32 bit");
+
+			if (Video_SavedBpp () != VID_GetBpp ())
+				M_Print (48, y + 24, "From the next start");
+			break;
+	}
+
+	M_Print (48, y + 40, "Esc goes back");
+}
+
+void M_Video_Key (int k)
+{
+	int	step;
+
+	step = 1;
+
+	switch (k)
+	{
+		case K_ESCAPE:
+			M_Menu_Options_f ();
+			break;
+
+		case K_UPARROW:
+			S_LocalSound ("misc/menu1.wav");
+			video_item = (video_item + VIDEO_ITEMS - 1) % VIDEO_ITEMS;
+			break;
+
+		case K_DOWNARROW:
+			S_LocalSound ("misc/menu1.wav");
+			video_item = (video_item + 1) % VIDEO_ITEMS;
+			break;
+
+		case K_LEFTARROW:
+			step = 3;		// one back of the four ways
+			/* fall through */
+		case K_RIGHTARROW:
+		case K_ENTER:
+			S_LocalSound (k == K_ENTER ? "misc/menu2.wav" : "misc/menu1.wav");
+
+			if (video_item == 0)
+			{
+				if (k == K_ENTER || k == K_RIGHTARROW)
+					M_Menu_VideoModes_f ();
+			}
+			else if (video_item == 1)
+			{
+				vid_switch_error[0] = 0;
+				VID_SetSyncMode ((VID_GetSyncMode () + step) % 4);
+			}
+			else
+				Cvar_SetValue ("vid_bpp", Video_SavedBpp () == 16 ? 32 : 16);
+			break;
+	}
+}
+
+/* Video Options > Choose screenmode (the 1.2-1.4 Video Modes page): the
+ * screen modes the library offers (VID_ListModes, 5:4 to 16:9), in columns
+ * as software Quake's; the running one in white. Enter switches live
+ * (VID_SwitchMode: the library opens the new screen and keeps the textures)
+ * and saves the choice (vid_width, vid_height, vid_modeid) for the next
+ * start. A library that cannot switch keeps the size and says so. */
+void M_Menu_VideoModes_f (void)
+{
+	int	w, h, i;
+
+	key_dest = key_menu;
+	m_state = m_videomodes;
+	m_entersound = true;
+	vid_switch_error[0] = 0;
 
 	video_nummodes = VID_ListModes (video_modes, VIDEO_MAXMODES);
 	VID_GetSize (&w, &h);
@@ -2047,7 +2185,7 @@ void M_Menu_Video_f (void)
 	}
 }
 
-void M_Video_Draw (void)
+void M_VideoModes_Draw (void)
 {
 	qpic_t	*p;
 	char	v[40];
@@ -2074,86 +2212,50 @@ void M_Video_Draw (void)
 			M_DrawCharacter (x - 12, y, 12 + ((int)(realtime * 4) & 1));
 	}
 
-	// the vertical sync, the item after the modes
 	y = 36 + rows * 8 + 8;
-	M_Print (24, y, "Vertical sync");
-	M_Print (24 + 15 * 8, y, VID_GetVSync () ? "on" : "off");
-
-	if (video_cursor == video_nummodes)
-		M_DrawCharacter (24 - 12, y, 12 + ((int)(realtime * 4) & 1));
-
-	// the buffering, below it (2026-11-12)
-	y += 8;
-	M_Print (24, y, "Buffering");
-	M_Print (24 + 15 * 8, y, video_buffering[VID_GetBuffering ()]);
-
-	if (video_cursor == video_nummodes + 1)
-		M_DrawCharacter (24 - 12, y, 12 + ((int)(realtime * 4) & 1));
-
-	y += 16;
 	sprintf (v, "Running: %dx%d, %d bit", w, h, VID_GetBpp ());
 	M_PrintWhite (48, y, v);
 
-	// 2026-11-07: a refused switch says why, in place of the help
 	if (vid_switch_error[0])
 	{
 		Video_PrintWrapped (24, y + 16, vid_switch_error);
 		return;
 	}
 
-	if (video_cursor == video_nummodes)
-		M_Print (48, y + 16, "Enter turns it on or off");
-	else if (video_cursor == video_nummodes + 1)
-		M_Print (48, y + 16, "Enter: the next way");
-	else
-		M_Print (48, y + 16, "Enter switches the mode");
-
+	M_Print (48, y + 16, "Enter switches the mode");
 	M_Print (48, y + 24, "Esc goes back");
 }
 
-void M_Video_Key (int k)
+void M_VideoModes_Key (int k)
 {
 	char	v[24];
 	int	rows;
 
 	rows = Video_Rows ();
 
-	if (video_nummodes == 0 && k != K_ESCAPE)
+	if (k == K_ESCAPE)
+	{
+		M_Menu_Video_f ();
+		return;
+	}
+
+	if (video_nummodes == 0)
 		return;
 
 	switch (k)
 	{
-		case K_ESCAPE:
-			M_Menu_Options_f ();
-			break;
-
-		// the cursor: the modes, then the vertical sync (video_nummodes),
-		// then the buffering (video_nummodes + 1)
 		case K_UPARROW:
 			S_LocalSound ("misc/menu1.wav");
-			video_cursor = (video_cursor + video_nummodes + 1) % (video_nummodes + 2);
+			video_cursor = (video_cursor + video_nummodes - 1) % video_nummodes;
 			break;
 
 		case K_DOWNARROW:
 			S_LocalSound ("misc/menu1.wav");
-			video_cursor = (video_cursor + 1) % (video_nummodes + 2);
+			video_cursor = (video_cursor + 1) % video_nummodes;
 			break;
 
 		case K_LEFTARROW:
 			S_LocalSound ("misc/menu1.wav");
-
-			if (video_cursor == video_nummodes)
-			{
-				VID_SetVSync (!VID_GetVSync ());
-				break;
-			}
-
-			if (video_cursor == video_nummodes + 1)
-			{
-				VID_SetBuffering ((VID_GetBuffering () + 2) % 3);
-				break;
-			}
-
 			video_cursor -= rows;
 
 			if (video_cursor < 0)
@@ -2165,19 +2267,6 @@ void M_Video_Key (int k)
 
 		case K_RIGHTARROW:
 			S_LocalSound ("misc/menu1.wav");
-
-			if (video_cursor == video_nummodes)
-			{
-				VID_SetVSync (!VID_GetVSync ());
-				break;
-			}
-
-			if (video_cursor == video_nummodes + 1)
-			{
-				VID_SetBuffering ((VID_GetBuffering () + 1) % 3);
-				break;
-			}
-
 			video_cursor += rows;
 
 			if (video_cursor >= video_nummodes)
@@ -2186,19 +2275,6 @@ void M_Video_Key (int k)
 
 		case K_ENTER:
 			S_LocalSound ("misc/menu2.wav");
-
-			if (video_cursor == video_nummodes)
-			{
-				VID_SetVSync (!VID_GetVSync ());
-				break;
-			}
-
-			if (video_cursor == video_nummodes + 1)
-			{
-				VID_SetBuffering ((VID_GetBuffering () + 1) % 3);
-				break;
-			}
-
 			VID_SwitchMode (video_modes[video_cursor].width, video_modes[video_cursor].height);
 			sprintf (v, "%d", video_modes[video_cursor].width);
 			Cvar_Set ("vid_width", v);
@@ -2243,11 +2319,14 @@ void M_Help_Draw (void)
 		M_PrintWhite(36, 88,  "     Includes ProQuake V1.03     ");
 		M_Print	    (28, 96,  "   extensions by J.P. Grossman   ");
 
-		M_PrintWhite(32, 114, "         2014 Updates            ");
-		M_Print	    (32, 128, "               by                ");
-		M_Print	    (32, 136, "       Cowcat and Matthey        ");
-    
-		M_Print	    (32, 152, "<-- Previous            Next -->");
+		M_PrintWhite(32, 112, "          2014 Updates           ");
+		M_Print	    (32, 120, "     by Cowcat and Matthey       ");
+
+		// 2026-11-13 (the user): the RadeonGL edition
+		M_PrintWhite(32, 136, "    RadeonGL edition " RGLQ_VERSION "         ");
+		M_Print	    (32, 144, "       by Marcus Gerards         ");
+
+		M_Print	    (32, 160, "<-- Previous            Next -->");
 
 		f = (int)(host_time * 8)%6;
 		M_DrawTransPic (48, 40 ,Draw_CachePic( va("gfx/menudot%i.lmp", f+1 ) ) );
@@ -3835,6 +3914,10 @@ void M_Draw (void)
 			M_Video_Draw ();
 			break;
 
+		case m_videomodes:	// 2026-11-13
+			M_VideoModes_Draw ();
+			break;
+
 		case m_help:
 			M_Help_Draw ();
 			break;
@@ -3932,6 +4015,10 @@ void M_Keydown (int key)
 
 		case m_video:	// 2026-11-06
 			M_Video_Key (key);
+			return;
+
+		case m_videomodes:	// 2026-11-13
+			M_VideoModes_Key (key);
 			return;
 
 		case m_help:

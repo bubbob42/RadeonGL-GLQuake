@@ -852,28 +852,28 @@ void ChangeVideoSync_f (void)
 	VID_SetVSync (Q_atoi(Cmd_Argv(1)) != 0);
 }
 
-/* 2026-11-12: vid_buffering 0|1|2, the Buffering item from the console (and
- * +vid_buffering on the command line, for tests): 0 two buffers with
- * vertical sync, 1 three by panning, 2 three by ChangeScreenBuffer */
-void ChangeBuffering_f (void)
+/* 2026-11-13: vid_sync 0|1|2|3, Video Options > Display sync from the
+ * console (and +vid_sync on the command line, for tests): 0 off, 1 vsync,
+ * 2 ScrollVPort, 3 ChangeScreenBuffer */
+void ChangeSync_f (void)
 {
 	int	m;
 
 	if (Cmd_Argc() == 1)
 	{
-		Con_Printf ("vid_buffering %d (0: 2, vsync; 1: 3, ScrollVPort; 2: 3, ChangeScreenBuffer)\n", VID_GetBuffering ());
+		Con_Printf ("vid_sync %d (0 off, 1 vsync, 2 ScrollVPort, 3 ChangeScreenBuffer)\n", VID_GetSyncMode ());
 		return;
 	}
 
 	m = Q_atoi(Cmd_Argv(1));
 
-	if (m < 0 || m > 2)
+	if (m < 0 || m > 3)
 	{
-		Con_Printf ("vid_buffering: 0, 1 or 2\n");
+		Con_Printf ("vid_sync: 0, 1, 2 or 3\n");
 		return;
 	}
 
-	VID_SetBuffering (m);
+	VID_SetSyncMode (m);
 }
 
 /* 2026-11-07: vertical sync, the Video Modes page's switch. The library
@@ -919,6 +919,34 @@ int VID_GetBuffering (void)
 	return (vid_bufmode.value == 2) ? 2 : 1;
 }
 
+/* 2026-11-13: Display sync, the four ways in one -- 0 two buffers copied at
+ * once, 1 two copied behind the beam (the default), 2 three by panning, 3
+ * three by ChangeScreenBuffer (vertical sync does not apply to those) */
+int VID_GetSyncMode (void)
+{
+	int	b;
+
+	b = VID_GetBuffering ();
+
+	if (b != 0)
+		return b + 1;
+
+	return gl_videosync ? 1 : 0;
+}
+
+void VID_SetSyncMode (int m)
+{
+	if (m <= 1)
+	{
+		if (VID_GetBuffering () != 0)
+			VID_SetBuffering (0);
+
+		VID_SetVSync (m == 1);
+	}
+	else
+		VID_SetBuffering (m - 1);
+}
+
 void VID_SetBuffering (int mode)
 {
 	numb = (mode == 0) ? 2 : 3;
@@ -929,10 +957,6 @@ void VID_SetBuffering (int mode)
 		SetFlipVar (mode == 2);
 
 	mglChooseNumberOfBuffers (numb);
-
-	if (numb == 2)
-		VID_SetVSync (true);	// two buffers: the copy, with vertical sync
-
 	vid_switch_error[0] = 0;
 	pending_w = scr_width;
 	pending_h = scr_height;
@@ -1231,7 +1255,7 @@ void VID_Init(unsigned char *palette)
 
 	Cmd_AddCommand ("gl_lightmapformat", &ShowLightmapFormat_f);
 	Cmd_AddCommand ("gl_videosync", &ChangeVideoSync_f);
-	Cmd_AddCommand ("vid_buffering", &ChangeBuffering_f);
+	Cmd_AddCommand ("vid_sync", &ChangeSync_f);
 	Cmd_AddCommand ("gl_lockmode", &ChangeLockMode_f);
 	Cmd_AddCommand ("gl_dithering", &ChangeDithering_f);
 	Cmd_AddCommand ("gl_width", &ChangeVideoMode_f);
@@ -1291,11 +1315,9 @@ void VID_Init(unsigned char *palette)
 	if (numb > 3)
 		numb = 3;   
   
-	if (numb == 2 || vid_vsync.value)
-		gl_videosync = true;
-
-	else
-		gl_videosync = false;
+	// 2026-11-13: the saved vsync alone (Display sync "off" is a choice
+	// now; MiniGL's custom of forcing it on with two buffers is gone)
+	gl_videosync = vid_vsync.value ? true : false;
 
 	// width
 	scr_width = 320; //gl_width.value;
