@@ -1973,7 +1973,10 @@ vid_modeid) for the next start. A library that cannot switch keeps the size
 and says so in the console; the saved choice applies at the next start.
 Below the modes (2026-11-07): Vertical sync, on or off with Enter, Left or
 Right (VID_SetVSync, saved as vid_vsync); the cursor reaches it with Up and
-Down.
+Down. Below that (2026-11-12): Buffering -- two buffers copied with vertical
+sync, three by panning (ScrollVPort), or three by ChangeScreenBuffer
+(VID_SetBuffering, saved as vid_bufmode; two buffers by default); Enter and Right go to
+the next, Left to the one before.
 */
 
 #define VIDEO_MAXMODES	40
@@ -1981,6 +1984,10 @@ Down.
 
 static vidmode_t	video_modes[VIDEO_MAXMODES];
 static int		video_nummodes, video_cursor;
+
+/* the Buffering item's ways (VID_GetBuffering): at most 21 characters from
+ * column 15, so they end inside the 320 pixels */
+static char		*video_buffering[3] = {"2, vsync", "3, ScrollVPort", "3, ChangeScreenBuffer"};
 
 /* white text in lines of up to 34 characters, broken at spaces (the
  * menu's 320 pixels less the margins) */
@@ -2075,6 +2082,14 @@ void M_Video_Draw (void)
 	if (video_cursor == video_nummodes)
 		M_DrawCharacter (24 - 12, y, 12 + ((int)(realtime * 4) & 1));
 
+	// the buffering, below it (2026-11-12)
+	y += 8;
+	M_Print (24, y, "Buffering");
+	M_Print (24 + 15 * 8, y, video_buffering[VID_GetBuffering ()]);
+
+	if (video_cursor == video_nummodes + 1)
+		M_DrawCharacter (24 - 12, y, 12 + ((int)(realtime * 4) & 1));
+
 	y += 16;
 	sprintf (v, "Running: %dx%d, %d bit", w, h, VID_GetBpp ());
 	M_PrintWhite (48, y, v);
@@ -2088,6 +2103,8 @@ void M_Video_Draw (void)
 
 	if (video_cursor == video_nummodes)
 		M_Print (48, y + 16, "Enter turns it on or off");
+	else if (video_cursor == video_nummodes + 1)
+		M_Print (48, y + 16, "Enter: the next way");
 	else
 		M_Print (48, y + 16, "Enter switches the mode");
 
@@ -2110,15 +2127,16 @@ void M_Video_Key (int k)
 			M_Menu_Options_f ();
 			break;
 
-		// the cursor: the modes, then the vertical sync (video_nummodes)
+		// the cursor: the modes, then the vertical sync (video_nummodes),
+		// then the buffering (video_nummodes + 1)
 		case K_UPARROW:
 			S_LocalSound ("misc/menu1.wav");
-			video_cursor = (video_cursor + video_nummodes) % (video_nummodes + 1);
+			video_cursor = (video_cursor + video_nummodes + 1) % (video_nummodes + 2);
 			break;
 
 		case K_DOWNARROW:
 			S_LocalSound ("misc/menu1.wav");
-			video_cursor = (video_cursor + 1) % (video_nummodes + 1);
+			video_cursor = (video_cursor + 1) % (video_nummodes + 2);
 			break;
 
 		case K_LEFTARROW:
@@ -2127,6 +2145,12 @@ void M_Video_Key (int k)
 			if (video_cursor == video_nummodes)
 			{
 				VID_SetVSync (!VID_GetVSync ());
+				break;
+			}
+
+			if (video_cursor == video_nummodes + 1)
+			{
+				VID_SetBuffering ((VID_GetBuffering () + 2) % 3);
 				break;
 			}
 
@@ -2148,6 +2172,12 @@ void M_Video_Key (int k)
 				break;
 			}
 
+			if (video_cursor == video_nummodes + 1)
+			{
+				VID_SetBuffering ((VID_GetBuffering () + 1) % 3);
+				break;
+			}
+
 			video_cursor += rows;
 
 			if (video_cursor >= video_nummodes)
@@ -2160,6 +2190,12 @@ void M_Video_Key (int k)
 			if (video_cursor == video_nummodes)
 			{
 				VID_SetVSync (!VID_GetVSync ());
+				break;
+			}
+
+			if (video_cursor == video_nummodes + 1)
+			{
+				VID_SetBuffering ((VID_GetBuffering () + 1) % 3);
 				break;
 			}
 

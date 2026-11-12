@@ -184,10 +184,11 @@ cvar_t	gl_width = {"gl_width","320"};
 cvar_t	vid_width = {"vid_width", "0", true};
 cvar_t	vid_height = {"vid_height", "0", true};
 cvar_t	vid_bpp = {"vid_bpp", "16", true};
-cvar_t	vid_buffers = {"vid_buffers", "3", true};
+cvar_t	vid_buffers = {"vid_buffers", "3", true};	// kept for old config.cfg files; the mode is vid_bufmode since 1.4
 cvar_t	vid_modeid = {"vid_modeid", "0", true};
 cvar_t	vid_conscale = {"vid_conscale", "0", true};	// 2D scale: 0 automatic, else 1, 2, 3 ...
 cvar_t	vid_vsync = {"vid_vsync", "1", true};		// 2026-11-07: vertical sync (the page's switch), on by default
+cvar_t	vid_bufmode = {"vid_bufmode", "0", true};	// 2026-11-12: 0 two buffers with vsync (the default), 1 three by panning, 2 three by ChangeScreenBuffer
 
 void VID_RegisterCvars (void)
 {
@@ -198,6 +199,7 @@ void VID_RegisterCvars (void)
 	Cvar_RegisterVariable (&vid_modeid);
 	Cvar_RegisterVariable (&vid_conscale);
 	Cvar_RegisterVariable (&vid_vsync);
+	Cvar_RegisterVariable (&vid_bufmode);
 }
 
 //cvar_t _windowed_mouse = {"_windowed_mouse", "1", true}; 
@@ -288,6 +290,31 @@ void DeletePointer(struct Window *QuakeWindow)
 }
 #endif
 
+/* 2026-11-12: how RadeonGL shows three buffers, its variable RadeonGLFlip
+ * ("pan" or "csb"), set LOCAL so it reaches only this process -- and, started
+ * from a Shell, put back as it was when the game ends (a local variable
+ * belongs to the Shell then). Libraries without the variable ignore it. */
+static int	flip_had = -1;		// -1: not touched; 0: there was none; 1: flip_old
+static char	flip_old[16];
+
+static void SetFlipVar (qboolean csb)
+{
+	if (flip_had < 0)
+		flip_had = (GetVar ("RadeonGLFlip", flip_old, sizeof (flip_old), GVF_LOCAL_ONLY) > 0) ? 1 : 0;
+
+	SetVar ("RadeonGLFlip", csb ? "csb" : "pan", -1, GVF_LOCAL_ONLY);
+}
+
+static void FlipVarBack (void)
+{
+	if (flip_had == 1)
+		SetVar ("RadeonGLFlip", flip_old, -1, GVF_LOCAL_ONLY);
+	else if (flip_had == 0)
+		DeleteVar ("RadeonGLFlip", GVF_LOCAL_ONLY);
+
+	flip_had = -1;
+}
+
 void VID_Shutdown(void)
 {     
 	//DeletePointer(QuakeWindow);
@@ -308,6 +335,7 @@ void VID_Shutdown(void)
 	mglDeleteContext();
 	MGLTerm();
 #endif
+	FlipVarBack ();
 }
 
 static void Check_Gamma (unsigned char *pal)
@@ -824,6 +852,30 @@ void ChangeVideoSync_f (void)
 	VID_SetVSync (Q_atoi(Cmd_Argv(1)) != 0);
 }
 
+/* 2026-11-12: vid_buffering 0|1|2, the Buffering item from the console (and
+ * +vid_buffering on the command line, for tests): 0 two buffers with
+ * vertical sync, 1 three by panning, 2 three by ChangeScreenBuffer */
+void ChangeBuffering_f (void)
+{
+	int	m;
+
+	if (Cmd_Argc() == 1)
+	{
+		Con_Printf ("vid_buffering %d (0: 2, vsync; 1: 3, ScrollVPort; 2: 3, ChangeScreenBuffer)\n", VID_GetBuffering ());
+		return;
+	}
+
+	m = Q_atoi(Cmd_Argv(1));
+
+	if (m < 0 || m > 2)
+	{
+		Con_Printf ("vid_buffering: 0, 1 or 2\n");
+		return;
+	}
+
+	VID_SetBuffering (m);
+}
+
 /* 2026-11-07: vertical sync, the Video Modes page's switch. The library
  * (RadeonGL 0.7 and up) holds each present until the beam has left the
  * screen: no tearing when turning, at the price of waiting for the beam.
@@ -852,6 +904,39 @@ void VID_SetVSync (qboolean on)
 	gl_videosync = on;
 	Cvar_SetValue ("vid_vsync", on ? 1 : 0);
 	mglEnableSync (gl_videosync);
+}
+
+/* 2026-11-12: the Video Modes page's Buffering item -- 0: two buffers, the
+ * copy with vertical sync; 1: three, panning a screen three times as tall
+ * (ScrollVPort); 2: three, ChangeScreenBuffer. RadeonGL's triple-buffer
+ * builds switch at once (the same size asked for again opens the screen
+ * the new way); other libraries keep the old way until the next start. */
+int VID_GetBuffering (void)
+{
+	if (numb == 2)
+		return 0;
+
+	return (vid_bufmode.value == 2) ? 2 : 1;
+}
+
+void VID_SetBuffering (int mode)
+{
+	numb = (mode == 0) ? 2 : 3;
+	vid.numpages = numb;
+	Cvar_SetValue ("vid_bufmode", mode);
+
+	if (numb == 3)
+		SetFlipVar (mode == 2);
+
+	mglChooseNumberOfBuffers (numb);
+
+	if (numb == 2)
+		VID_SetVSync (true);	// two buffers: the copy, with vertical sync
+
+	vid_switch_error[0] = 0;
+	pending_w = scr_width;
+	pending_h = scr_height;
+	UPDATE = TRUE;
 }
 
 void ChangeDithering_f (void)
@@ -1146,6 +1231,7 @@ void VID_Init(unsigned char *palette)
 
 	Cmd_AddCommand ("gl_lightmapformat", &ShowLightmapFormat_f);
 	Cmd_AddCommand ("gl_videosync", &ChangeVideoSync_f);
+	Cmd_AddCommand ("vid_buffering", &ChangeBuffering_f);
 	Cmd_AddCommand ("gl_lockmode", &ChangeLockMode_f);
 	Cmd_AddCommand ("gl_dithering", &ChangeDithering_f);
 	Cmd_AddCommand ("gl_width", &ChangeVideoMode_f);
@@ -1190,9 +1276,11 @@ void VID_Init(unsigned char *palette)
 	if (i = COM_CheckParm("-nocachetris")) cachetris = false; // Cowcat
 	if (i = COM_CheckParm("-fixboundbox")) fixboundbox = true; // Cowcat
 
-	// number of buffers: the saved Video Modes setting, the command line wins
-	if (vid_buffers.value == 2 || vid_buffers.value == 3)
-		numb = (int)vid_buffers.value;
+	// number of buffers: the saved Buffering item (vid_bufmode, 1.4: two
+	// with vertical sync unless the player chose three -- the old
+	// vid_buffers "3" every config.cfg carries is not read any more), the
+	// command line wins
+	numb = (vid_bufmode.value == 1 || vid_bufmode.value == 2) ? 3 : 2;
 
 	if ((i = COM_CheckParm("-buf")) != 0)
 		numb = Q_atoi(com_argv[i+1]);
@@ -1307,6 +1395,10 @@ void VID_Init(unsigned char *palette)
 		//mglChoosePixelDepth(bpp);
 
 		Con_Printf("Setting number of buffers to %d...\n", numb);
+
+		if (numb == 3)
+			SetFlipVar (vid_bufmode.value == 2);	// 2026-11-12: panning or ChangeScreenBuffer
+
 		mglChooseNumberOfBuffers(numb);
 
 		Con_Printf("gl_videosync is %d\n", gl_videosync);

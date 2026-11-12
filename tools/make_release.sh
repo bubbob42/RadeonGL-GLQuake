@@ -32,11 +32,13 @@ rm -rf "$STAGE"
 mkdir -p "$D/Source" "$F"
 cp "$R/dist/Quake/GLQuake" "$R/dist/Quake/GLQuake040" "$R/dist/Quake/QuakeLauncher" "$F/"
 cp package/PlayQuake package/PlayQuake.info package/QuakeLauncher.info "$F/"
+cp package/QuakeDrawer.info "$F/QuakeDrawer.info"   # the Installer gives the Quake drawer this icon (its own window: tools/layout_drawers.sh)
 chmod 755 "$F/GLQuake" "$F/GLQuake040" "$F/QuakeLauncher" "$F/PlayQuake"   # LhA takes the host mode
 cp package/Install package/Install.info "$D/"
 cp README.md "$D/ReadMe"
 cp package/ReadMe.info "$D/ReadMe.info"
 cp COPYING "$D/COPYING"
+cp package/COPYING.info "$D/COPYING.info"
 cp package/GLQuakeR200.info "$STAGE/GLQuakeR200.info"
 git archive HEAD | tar -x -C "$D/Source"
 rm -rf "$D/Source/release"              # no archive inside the archive

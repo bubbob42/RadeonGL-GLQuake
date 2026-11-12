@@ -7,6 +7,8 @@
 ;   Files/GLQuake040         the 68040 build   } processor is installed
 ;   Files/QuakeLauncher(.info) the start window: options, then the game
 ;   Files/PlayQuake(.info)   the start script, for a Shell
+;   Files/QuakeDrawer.info   the Quake drawer's icon (Mason's), only when
+;                            the drawer has none
 ;   ReadMe(.info)            -> GLQuakeR200.ReadMe(.info)
 ;
 ; Written for the V44 Installer of AmigaOS 3.2, like RadeonGL's (whose
@@ -75,6 +77,10 @@
         )
     )
 )
+; whether the drawer has an icon of its own -- asked BEFORE anything is
+; made: the Installer gives a drawer it creates a default icon (measured on
+; the PiStorm, 3.2.2), which is no icon of the user's
+(set #hadicon (exists (cat #dest ".info") (noreq)))
 (if (<> (exists #dest (noreq)) 2)
     (makedir #dest
         (prompt ("Creating the drawer\n%s" #dest))
@@ -147,6 +153,24 @@
     (optional "force")
 )
 
+; --- the Quake drawer's icon, when it had none ----------------------------
+; Martin "Mason" Merz's drawer icon, over the default icon the Installer
+; gave the drawer. A drawer that had an icon of its own keeps it; a
+; volume's root (fileonly gives "") has no drawer icon.
+(set #dname (fileonly #dest))
+(if (AND (<> #dname "") (= #hadicon 0))
+    (copyfiles
+        (prompt ("Giving the drawer %s its icon." #dest))
+        (help 'The Quake drawer icon is by Martin "Mason" Merz. A drawer '
+              'that has an icon of its own keeps it.\n\n'
+              @copyfiles-help)
+        (source "Files/QuakeDrawer.info")
+        (dest (pathonly #dest))
+        (newname (cat #dname ".info"))
+        (optional "force" "nofail")
+    )
+)
+
 ; --- done ------------------------------------------------------------------
 (complete 100)
 (set #closing
@@ -154,9 +178,9 @@
          "Double-click QuakeLauncher there to play: it starts "
          ("%s, the build for this processor, with the options " #build)
          "of its window. From a Shell, PlayQuake does the same.\n\n"
-         "For the fastest picture on an R200 Radeon, install RadeonGL 0.8 "
-         "or later (driver/video/RadeonGL): vertical sync and every screen "
-         "mode of the card."))
+         "For the fastest picture on an R200 Radeon, install RadeonGL 0.12 "
+         "or later (driver/video/RadeonGL): vertical sync, three buffers "
+         "(Video Options > Buffering) and every screen mode of the card."))
 (if (= #haveid1 0)
     (set #closing
         (cat #closing

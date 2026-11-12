@@ -5,7 +5,7 @@
 #ifndef RGLQ_VERSION_H
 #define RGLQ_VERSION_H
 
-#define RGLQ_VERSION	"1.3"
+#define RGLQ_VERSION	"1.4"
 #define RGLQ_DATE	"9.11.2026"
 
 #endif

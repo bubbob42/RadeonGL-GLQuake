@@ -91,6 +91,8 @@ qboolean VID_GetVSync (void);			// vertical sync on (vid_vsync)
 int VID_GetBpp (void);				// 16 or 32: the screen's depth
 extern char vid_switch_error[128];		// why the last live switch failed, "" = it did not
 void VID_SetVSync (qboolean on);		// ... switched now and saved
+int VID_GetBuffering (void);			// 0: 2, vsync; 1: 3, panning; 2: 3, ChangeScreenBuffer (vid_bufmode)
+void VID_SetBuffering (int mode);		// ... switched (live with RadeonGL's triple-buffer builds) and saved
 #endif
 
 void  VID_Init (unsigned char *palette);

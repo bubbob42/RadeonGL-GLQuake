@@ -1,4 +1,4 @@
-# GLQuake for minigl.library -- RadeonGL edition 1.3
+# GLQuake for minigl.library -- RadeonGL edition 1.4
 
 GLQuake for AmigaOS 3.x on a 68040 or 68060, as a `minigl.library` 29.1
 client (dispatch interface ABI 5). It runs on any `minigl.library` 29.1:
@@ -26,7 +26,10 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   live with Enter. **Vertical sync** on the same page, on by default (with
   RadeonGL 0.8: the copy to the screen waits for the beam, so turning no
   longer tears). A mode that does not open says why there, for example "not
-  enough memory for the back buffer".
+  enough memory for the back buffer". **Buffering** below it (1.4): two
+  buffers copied with vertical sync (the default), three by panning
+  (ScrollVPort), or three by ChangeScreenBuffer. Saved; with RadeonGL 0.12 it switches at
+  once, with an older RadeonGL at the next start.
 - **Options > Sound Options:** Paula or AHI and the rate, restarted live.
   **Mouse Look** and **Mouse Speed** (down to 0.5) on the Options page; the
   Mouse Look box shows a `+mlook` too.
@@ -149,6 +152,7 @@ New or changed against the Aminet release:
 | `-anycpu` | start a build on a CPU it is not made for |
 | `-bpp 32` | a 32-bit screen (16 is the default; RadeonGL falls back to 16 where a size has no 32-bit mode) |
 | `gl_videosync 0` / `1` | vertical sync off / on (saved as `vid_vsync`, on by default; RadeonGL 0.8) |
+| `vid_buffering 0` / `1` / `2` | two buffers with vertical sync / three by panning / three by ChangeScreenBuffer (saved as `vid_bufmode`, 0 by default; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
 | `menu_video` | opens the Video Modes page (for a key binding) |
 | `-playbench N` | plays E1M1 from `id1/playbench.txt` (frame, command lines) with a fixed frame time, times N frames, prints the speed and a checksum of the game, and quits (with `+host_framerate 0.03 +map e1m1`) |
 | `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |
@@ -235,13 +239,18 @@ gmake glquake-data           # the id1 data for tests (never committed)
 Toolchain: m68k-amigaos-gcc 6.5 with libnix (`-noixemul`), GAS for the
 `*_gas.s` files. The rules are in `Makefile.radeongl`.
 QuakeLauncher (`launcher/quakelauncher.c`) is 68000 code in C89; it also
-builds with SAS/C 6.58. `tools/make_launcher_icon.py` draws its icon.
+builds with SAS/C 6.58. `tools/make_mason_icons.py` makes the package's
+Quake icons from Mason's art in `package/art/`.
 `tools/scan_emul.py` lists every instruction of a binary that a 68040 or
 68060 would have to emulate. `FINDINGS.md` holds the audit notes and
 `PLAN.md` the work plan.
 
 ## History
 
+- **1.4** (12.11.2026): Buffering on the Video Modes page (two buffers with
+  vertical sync, or three by panning or ChangeScreenBuffer; live with
+  RadeonGL 0.12); the installed Quake drawer opens with its icons in one
+  row, its own window, only icons shown; the package drawer shows COPYING.
 - **1.3** (9.11.2026): textures under water again (a compiler fault read
   the warped vertices 4 bytes off); demo2 at 1280 x 720 15% faster.
 - **1.2** (7.11.2026): the start window QuakeLauncher; the Installer puts
@@ -270,8 +279,9 @@ decisions. Every change was measured and tested on real hardware.
   improvements this source carries.
 - **Dennis Boon and Steffen Häuser:** GLQuake for `minigl.library`, and
   `minigl.library` 29.1 itself.
-- **Martin "Mason" Merz:** the Install icon, AmigaOS 3.2's installer icon,
-  used with his permission.
+- **Martin "Mason" Merz:** the Quake icons (the Quake drawer and
+  QuakeLauncher), and the Install icon, AmigaOS 3.2's installer icon, used
+  with his permission.
 - **Marcus Gerards:** this RadeonGL edition.
 
 ## Licence
