@@ -2,18 +2,19 @@ Short:        GLQuake for R200 Radeons on 68k
 Uploader:     marcus.gerards@googlemail.com (Marcus Gerards)
 Author:       id Software, D. Boon, S. Haeuser, Cowcat, M. Gerards et al.
 Type:         game/shoot
-Version:      1.3
+Version:      1.4
 Architecture: m68k-amigaos >= 3.1
 Distribution: Aminet
 Replaces:     game/shoot/GLQuakeR200.lha
 Requires:     A Radeon 8500, 9000, 9100, 9200 or 9250 with
-              driver/video/RadeonGL 0.8+ (Picasso96 3.6+); a 68060, or
+              driver/video/RadeonGL 0.8+, 0.12+ for three buffers
+              (Picasso96 3.6+); a 68060, or
               a 68040 (second build), with FPU; AmigaOS 3.1+ (the start
               window: 3.2); the Quake data (id1 drawer). Also runs on
               any other minigl.library 29.1.
 Kurz:         GLQuake fuer R200-Radeons am 68k
 
-GLQuake for R200 68k  --  RadeonGL edition 1.3  --  9.11.2026
+GLQuake for R200 68k  --  RadeonGL edition 1.4  --  12.11.2026
 
 
 WHAT IT IS
@@ -32,6 +33,15 @@ drawing instead of RadeonGL's extension.
 
 
 WHAT IS NEW AGAINST THE ARCHIVE IT COMES FROM
+
+New in 1.4:
+  - Options > Video Options > Buffering: two buffers copied with
+    vertical sync (the default), three by panning (ScrollVPort), or three by
+    ChangeScreenBuffer; saved, and switched at once with RadeonGL 0.12
+    (at the next start with an older RadeonGL); vid_buffering 0/1/2 in
+    the console
+  - the installed Quake drawer opens in a window of its own with its
+    three icons in one row; the archive's drawer shows COPYING
 
 New in 1.3:
   - textures under water again: seen from under water, walls and floors
@@ -148,6 +158,10 @@ id Software. The game data is not included.
 
 
 HISTORY
+
+1.4 (12.11.2026)
+  - Buffering on the Video Options page (two or three buffers), drawers
+    laid out
 
 1.3 (9.11.2026)
   - textures under water again (a compiler fault); demo2 +15% at 1280 x 720
