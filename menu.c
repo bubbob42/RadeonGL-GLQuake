@@ -1970,7 +1970,8 @@ void M_Sound_Key (int k)
 /* VIDEO MENU (2026-11-06; 2026-11-13 three items, the user)
 
 Options > Video Options: Choose screenmode (its own page, below), Display
-sync (off, vsync, ScrollVPort or ChangeScreenBuffer: VID_SetSyncMode, live,
+sync (off, vsync, ScrollVPort, ChangeScreenBuffer or, 2026-11-13, the same
+without the DispMessage wait, unsafe: VID_SetSyncMode, live,
 saved as vid_vsync and vid_bufmode) and Screen depth (16 or 32 bit, saved as
 vid_bpp, from the next start).
 */
@@ -1993,17 +1994,34 @@ static int		video_item;		// the Video Options page's cursor
 /* Display sync's ways (VID_GetSyncMode), each with its cost in brackets
  * (the user, 2026-11-13): on a line of their own under the label, from x 48
  * -- the longest, 25 characters, would not fit beside it */
-static char		*video_sync[4] = {"off", "vsync (slightly slower)", "ScrollVPort (slower)",
-					  "ChangeScreenBuffer (slow)"};
+#define VIDEO_SYNCS	5
+
+/* 2026-11-13: the fifth, ChangeScreenBuffer without waiting for the
+ * DispMessage (Tim's way): Picasso96's maintainer says it is not safe, so
+ * it says so. MEASURED on the A4000D (demo1): no faster than the fourth --
+ * 21.6 fps at 1280 x 720 and 17.0 at 1920 x 1080 both ways (vsync 29.8 and
+ * 22.5, ScrollVPort 26.7 and 21.9): the order above is the speed order.
+ * 34 characters from x 48: the menu's last column. */
+static char		*video_sync[VIDEO_SYNCS] = {"off", "vsync (slower)", "ScrollVPort (fast)",
+					  "ChangeScreenBuffer (slow)", "ChangeScreenBuffer (slow / unsafe)"};
+
+/* 2026-11-13 late: the chooser goes through them fastest first; the
+ * numbers (vid_sync, saved as vid_vsync and vid_bufmode) stay as they were.
+ * MEASURED with RadeonGL 0.14 on the A4000D (demo1, 1280 x 720 / 1920 x
+ * 1080): off 32.2 / 28.7 fps, ScrollVPort 32.1 / 30.6 (its helper below the
+ * game now; 0.13: 26.6 / 21.9), vsync 29.9 / 22.4, ChangeScreenBuffer
+ * 21.6 / 17.0, the same unsafe 21.6 / 17.0. */
+static int		video_sync_order[VIDEO_SYNCS] = {0, 2, 1, 3, 4};
 
 /* the items' rows: Display sync's value takes the line under its label */
 static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72};
 
-static char		*video_sync_help[4] = {
-	"Copied at once: fastest, tears",
+static char		*video_sync_help[VIDEO_SYNCS] = {
+	"Copied at once: fast, tears",
 	"Copied behind the beam",
-	"3 buffers, the screen panned",
-	"3 buffers, Intuition switches"};
+	"3 buffers, panned: no tearing",
+	"3 buffers, Intuition switches",
+	"As before, not waiting: unsafe"};
 
 /* white text in lines of up to 34 characters, broken at spaces (the
  * menu's 320 pixels less the margins) */
@@ -2137,7 +2155,7 @@ void M_Video_Key (int k)
 			break;
 
 		case K_LEFTARROW:
-			step = 3;		// one back of the four ways
+			step = VIDEO_SYNCS - 1;	// one back of the five ways
 			/* fall through */
 		case K_RIGHTARROW:
 		case K_ENTER:
@@ -2150,8 +2168,13 @@ void M_Video_Key (int k)
 			}
 			else if (video_item == 1)
 			{
+				int	pos;
+
 				vid_switch_error[0] = 0;
-				VID_SetSyncMode ((VID_GetSyncMode () + step) % 4);
+
+				for (pos = 0; pos < VIDEO_SYNCS - 1 && video_sync_order[pos] != VID_GetSyncMode (); pos++)
+					;
+				VID_SetSyncMode (video_sync_order[(pos + step) % VIDEO_SYNCS]);
 			}
 			else
 				Cvar_SetValue ("vid_bpp", Video_SavedBpp () == 16 ? 32 : 16);

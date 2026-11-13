@@ -188,7 +188,7 @@ cvar_t	vid_buffers = {"vid_buffers", "3", true};	// kept for old config.cfg file
 cvar_t	vid_modeid = {"vid_modeid", "0", true};
 cvar_t	vid_conscale = {"vid_conscale", "0", true};	// 2D scale: 0 automatic, else 1, 2, 3 ...
 cvar_t	vid_vsync = {"vid_vsync", "1", true};		// 2026-11-07: vertical sync (the page's switch), on by default
-cvar_t	vid_bufmode = {"vid_bufmode", "0", true};	// 2026-11-12: 0 two buffers with vsync (the default), 1 three by panning, 2 three by ChangeScreenBuffer
+cvar_t	vid_bufmode = {"vid_bufmode", "1", true};	// 2026-11-12: 0 two buffers with vsync, 1 three by panning (the default since 2026-11-13: tear-free and the fastest with RadeonGL 0.14), 2 three by ChangeScreenBuffer, 3 (2026-11-13) the same without the DispMessage wait (unsafe)
 
 void VID_RegisterCvars (void)
 {
@@ -291,18 +291,22 @@ void DeletePointer(struct Window *QuakeWindow)
 #endif
 
 /* 2026-11-12: how RadeonGL shows three buffers, its variable RadeonGLFlip
- * ("pan" or "csb"), set LOCAL so it reaches only this process -- and, started
+ * ("pan", "csb" or, 2026-11-13, "csbnowait": ChangeScreenBuffer without
+ * waiting for the DispMessage -- faster, but not safe on Picasso96 says its
+ * maintainer), set LOCAL so it reaches only this process -- and, started
  * from a Shell, put back as it was when the game ends (a local variable
- * belongs to the Shell then). Libraries without the variable ignore it. */
+ * belongs to the Shell then). Libraries without the variable ignore it;
+ * those before RadeonGL 0.14 read csbnowait as csb. */
 static int	flip_had = -1;		// -1: not touched; 0: there was none; 1: flip_old
 static char	flip_old[16];
 
-static void SetFlipVar (qboolean csb)
+/* mode: vid_bufmode's 1 panning, 2 ChangeScreenBuffer, 3 the same unsafe */
+static void SetFlipVar (int mode)
 {
 	if (flip_had < 0)
 		flip_had = (GetVar ("RadeonGLFlip", flip_old, sizeof (flip_old), GVF_LOCAL_ONLY) > 0) ? 1 : 0;
 
-	SetVar ("RadeonGLFlip", csb ? "csb" : "pan", -1, GVF_LOCAL_ONLY);
+	SetVar ("RadeonGLFlip", (mode == 3) ? "csbnowait" : (mode == 2) ? "csb" : "pan", -1, GVF_LOCAL_ONLY);
 }
 
 static void FlipVarBack (void)
@@ -852,24 +856,25 @@ void ChangeVideoSync_f (void)
 	VID_SetVSync (Q_atoi(Cmd_Argv(1)) != 0);
 }
 
-/* 2026-11-13: vid_sync 0|1|2|3, Video Options > Display sync from the
- * console (and +vid_sync on the command line, for tests): 0 off, 1 vsync,
- * 2 ScrollVPort, 3 ChangeScreenBuffer */
+/* 2026-11-13: vid_sync 0-4, Video Options > Display sync from the console
+ * (and +vid_sync on the command line, for tests): 0 off, 1 vsync,
+ * 2 ScrollVPort, 3 ChangeScreenBuffer, 4 ChangeScreenBuffer without the
+ * DispMessage wait (unsafe) */
 void ChangeSync_f (void)
 {
 	int	m;
 
 	if (Cmd_Argc() == 1)
 	{
-		Con_Printf ("vid_sync %d (0 off, 1 vsync, 2 ScrollVPort, 3 ChangeScreenBuffer)\n", VID_GetSyncMode ());
+		Con_Printf ("vid_sync %d (0 off, 1 vsync, 2 ScrollVPort, 3 ChangeScreenBuffer, 4 ChangeScreenBuffer unsafe)\n", VID_GetSyncMode ());
 		return;
 	}
 
 	m = Q_atoi(Cmd_Argv(1));
 
-	if (m < 0 || m > 3)
+	if (m < 0 || m > 4)
 	{
-		Con_Printf ("vid_sync: 0, 1, 2 or 3\n");
+		Con_Printf ("vid_sync: 0, 1, 2, 3 or 4\n");
 		return;
 	}
 
@@ -908,7 +913,8 @@ void VID_SetVSync (qboolean on)
 
 /* 2026-11-12: the Video Modes page's Buffering item -- 0: two buffers, the
  * copy with vertical sync; 1: three, panning a screen three times as tall
- * (ScrollVPort); 2: three, ChangeScreenBuffer. RadeonGL's triple-buffer
+ * (ScrollVPort); 2: three, ChangeScreenBuffer; 3 (2026-11-13): the same
+ * without the DispMessage wait (unsafe). RadeonGL's triple-buffer
  * builds switch at once (the same size asked for again opens the screen
  * the new way); other libraries keep the old way until the next start. */
 int VID_GetBuffering (void)
@@ -916,12 +922,16 @@ int VID_GetBuffering (void)
 	if (numb == 2)
 		return 0;
 
-	return (vid_bufmode.value == 2) ? 2 : 1;
+	if (vid_bufmode.value == 2 || vid_bufmode.value == 3)
+		return (int) vid_bufmode.value;
+
+	return 1;
 }
 
-/* 2026-11-13: Display sync, the four ways in one -- 0 two buffers copied at
+/* 2026-11-13: Display sync, the five ways in one -- 0 two buffers copied at
  * once, 1 two copied behind the beam (the default), 2 three by panning, 3
- * three by ChangeScreenBuffer (vertical sync does not apply to those) */
+ * three by ChangeScreenBuffer, 4 the same without the DispMessage wait
+ * (vertical sync does not apply to the three-buffer ways) */
 int VID_GetSyncMode (void)
 {
 	int	b;
@@ -954,7 +964,7 @@ void VID_SetBuffering (int mode)
 	Cvar_SetValue ("vid_bufmode", mode);
 
 	if (numb == 3)
-		SetFlipVar (mode == 2);
+		SetFlipVar (mode);
 
 	mglChooseNumberOfBuffers (numb);
 	vid_switch_error[0] = 0;
@@ -1304,7 +1314,7 @@ void VID_Init(unsigned char *palette)
 	// with vertical sync unless the player chose three -- the old
 	// vid_buffers "3" every config.cfg carries is not read any more), the
 	// command line wins
-	numb = (vid_bufmode.value == 1 || vid_bufmode.value == 2) ? 3 : 2;
+	numb = (vid_bufmode.value >= 1 && vid_bufmode.value <= 3) ? 3 : 2;
 
 	if ((i = COM_CheckParm("-buf")) != 0)
 		numb = Q_atoi(com_argv[i+1]);
@@ -1419,7 +1429,7 @@ void VID_Init(unsigned char *palette)
 		Con_Printf("Setting number of buffers to %d...\n", numb);
 
 		if (numb == 3)
-			SetFlipVar (vid_bufmode.value == 2);	// 2026-11-12: panning or ChangeScreenBuffer
+			SetFlipVar ((int) vid_bufmode.value);	// 2026-11-12: panning or ChangeScreenBuffer
 
 		mglChooseNumberOfBuffers(numb);
 

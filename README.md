@@ -26,14 +26,20 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   - **Choose screenmode** opens the list of the screen modes the library
     offers, switched live with Enter. A mode that does not open says why,
     for example "not enough memory for the back buffer".
-  - **Display sync**, how a finished frame reaches the screen, each with its
-    cost in brackets on the page: `off` (copied at once: fastest, tears),
-    `vsync` (slightly slower: copied behind the beam, the default; tear-free
-    with RadeonGL 0.12), `ScrollVPort` (slower: three buffers, the screen
-    panned) or `ChangeScreenBuffer` (slow: three buffers, Intuition
-    switches). On the A4000D at 1280 x 720, demo1: 29.8, 26.6 and 21.6 fps.
-    Live with RadeonGL 0.12, with an older RadeonGL the three-buffer ways
-    from the next start.
+  - **Display sync**, how a finished frame reaches the screen, fastest
+    first, each with its cost in brackets on the page: `off` (copied at
+    once: fast, tears), `ScrollVPort` (fast: three buffers, the screen
+    panned, no tearing; the default), `vsync` (slower: copied behind the
+    beam), `ChangeScreenBuffer` (slow: three buffers, Intuition
+    switches) or `ChangeScreenBuffer` (slow / unsafe: the same without
+    waiting for each switch's DispMessage; Picasso96's maintainer says
+    that is not safe, and it was no faster). On the A4000D with RadeonGL
+    0.14, demo1 at 1280 x 720: 32.2, 32.1, 29.9, 21.6 and 21.6 fps; at
+    1920 x 1080: 28.7, 30.6, 22.4, 17.0 and 17.0. ScrollVPort is that fast
+    from RadeonGL 0.14 on (0.13: 26.6 and 21.9); the unsafe way needs 0.14
+    (older versions treat it as the one before it). Live with RadeonGL
+    0.12, with an older RadeonGL the three-buffer ways from the next
+    start.
   - **Screen depth**, 16 or 32 bit, from the next start.
 - **Options > Sound Options:** Paula or AHI and the rate, restarted live.
   **Mouse Look** and **Mouse Speed** (down to 0.5) on the Options page; the
@@ -157,7 +163,7 @@ New or changed against the Aminet release:
 | `-anycpu` | start a build on a CPU it is not made for |
 | `-bpp 32` | a 32-bit screen (16 is the default; RadeonGL falls back to 16 where a size has no 32-bit mode) |
 | `gl_videosync 0` / `1` | vertical sync off / on (saved as `vid_vsync`, on by default; RadeonGL 0.8) |
-| `vid_sync 0` / `1` / `2` / `3` | Display sync: off / vsync (the default) / ScrollVPort / ChangeScreenBuffer (saved as `vid_vsync` and `vid_bufmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
+| `vid_sync 0` / `1` / `2` / `3` / `4` | Display sync: off / vsync / ScrollVPort (the default) / ChangeScreenBuffer / ChangeScreenBuffer without the DispMessage wait, unsafe (saved as `vid_vsync` and `vid_bufmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
 | `menu_video` | opens the Video Modes page (for a key binding) |
 | `-playbench N` | plays E1M1 from `id1/playbench.txt` (frame, command lines) with a fixed frame time, times N frames, prints the speed and a checksum of the game, and quits (with `+host_framerate 0.03 +map e1m1`) |
 | `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |
@@ -253,8 +259,10 @@ Quake icons from Mason's art in `package/art/`.
 ## History
 
 - **1.5** (13.11.2026): Video Options rebuilt: Choose screenmode (its own
-  page), Display sync (off, vsync, ScrollVPort, ChangeScreenBuffer: one
-  chooser instead of two items that read as independent), Screen depth;
+  page), Display sync (off, ScrollVPort, vsync, ChangeScreenBuffer, and
+  ChangeScreenBuffer without the DispMessage wait, marked unsafe, fastest
+  first: one chooser instead of two items that read as independent;
+  ScrollVPort, now the fastest without tearing, by default), Screen depth;
   Display sync "off" stays off after a restart; the RadeonGL edition and
   its author on the credits page.
 - **1.4** (12.11.2026): Buffering on the Video Modes page (two buffers with
