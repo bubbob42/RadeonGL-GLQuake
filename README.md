@@ -181,19 +181,29 @@ GLQuake's `timedemo`, all frames, no sound, on an A4000D: 68060 at 50 MHz
 (CyberStorm MK II), Mediator, Radeon 9200, AmigaOS 3.2, Picasso96 3.6,
 RadeonGL with its command check off (`RadeonGLCheck=0`). Frames a second:
 
-| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | 1.1, RadeonGL 0.7 | 1.2, RadeonGL 0.8 | **1.3, RadeonGL 0.11** | 1.3 against the source |
-|---|---|---:|---:|---:|---:|---:|
-| demo1 | 320 x 240 | 24.4 | 29.4 | 33.5 | **33.0** | +35% |
-| demo1 | 640 x 480 | 23.7 | 28.7 | 32.5 | **32.2** | +36% |
-| demo1 | 1280 x 720 | 23.3 | 28.0 | 32.9 | **31.1** | +33% |
-| demo2 | 320 x 240 | 21.7 | 28.9 | 30.6 | **29.6** | +36% |
-| demo2 | 1280 x 720 | 17.9 | 23.5 | 26.0 | **28.4** | +59% |
-| demo3 | 320 x 240 | 21.4 | 25.6 | 28.9 | **28.6** | +34% |
-| demo3 | 1280 x 720 | 19.9 | 24.0 | 27.5 | **25.4** | +28% |
+| Demo | Screen | Aminet source (68060 build), RadeonGL 0.6 | 1.1, RadeonGL 0.7 | 1.2, RadeonGL 0.8 | 1.3, RadeonGL 0.11 | **1.5, RadeonGL 0.14** | 1.5 against the source |
+|---|---|---:|---:|---:|---:|---:|---:|
+| demo1 | 320 x 240 | 24.4 | 29.4 | 33.5 | 33.0 | **32.5** | +33% |
+| demo1 | 640 x 480 | 23.7 | 28.7 | 32.5 | 32.2 | **31.8** | +34% |
+| demo1 | 1280 x 720 | 23.3 | 28.0 | 32.9 | 31.1 | **32.0** | +37% |
+| demo2 | 320 x 240 | 21.7 | 28.9 | 30.6 | 29.6 | **29.1** | +34% |
+| demo2 | 1280 x 720 | 17.9 | 23.5 | 26.0 | 28.4 | **28.5** | +59% |
+| demo3 | 320 x 240 | 21.4 | 25.6 | 28.9 | 28.6 | **28.0** | +31% |
+| demo3 | 1280 x 720 | 19.9 | 24.0 | 27.5 | 25.4 | **26.9** | +35% |
 
 Each column was measured on its own day with the RadeonGL of its time;
-the 1.3 column on 9 November 2026 after a fresh boot, each figure the mean
-of three runs at different load addresses. Columns from different days
+the 1.3 column on 9 November 2026 after a fresh boot, the 1.5 column on
+14 November 2026 (the release build, two buffers, vertical sync off, no
+fresh boot), each figure the mean of three runs at different load
+addresses.
+
+**Display sync in 1.5** (demo1, RadeonGL 0.14, the same session):
+
+| Display sync | 1280 x 720 | 1920 x 1080 (50 Hz) |
+|---|---:|---:|
+| off (tears) | 32.0 | 28.6 |
+| **ScrollVPort** (the default) | **31.9** | **30.8** |
+| vsync | 29.8 | 22.7 | Columns from different days
 compare only roughly: the machine itself varies by a few per cent from
 one session to the next (RadeonGL 0.8 ran demo1 at 1280 x 720 at 32.9 fps
 on 7 November and at 30.8 on 9 November). GLQuake also runs about 1.5%
@@ -298,8 +308,8 @@ decisions. Every change was measured and tested on real hardware.
 - **Dennis Boon and Steffen Häuser:** GLQuake for `minigl.library`, and
   `minigl.library` 29.1 itself.
 - **Martin "Mason" Merz:** the Quake icons (the Quake drawer and
-  QuakeLauncher), and the Install icon, AmigaOS 3.2's installer icon, used
-  with his permission.
+  QuakeLauncher), the Install icon (AmigaOS 3.2's installer icon) and the
+  ReadMe and COPYING icons (3.2's text icon), used with his permission.
 - **Marcus Gerards:** this RadeonGL edition.
 
 ## Licence

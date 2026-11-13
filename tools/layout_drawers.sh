@@ -16,8 +16,11 @@ set -e
 cd "$(dirname "$0")/../package"
 P="python3 -I ../tools/set_icon_pos.py"
 $P Install.info        --pos  50 23      # glow 45 x 45, centre 72
-$P COPYING.info        --pos 168 32      # 32 x 36, centre 184
-$P ReadMe.info         --pos 300 32      # 32 x 36, centre 316
+# COPYING and ReadMe: AmigaOS 3.2's def_text.info (the user, 2026-11-14),
+# made by RadeonGL's tools/make_text_icon.py (cut to its art, default tool
+# MultiView): glow 38 x 42
+$P COPYING.info        --pos 165 26      # glow 38 x 42, centre 184
+$P ReadMe.info         --pos 297 26      # glow 38 x 42, centre 316
 $P QuakeLauncher.info  --pos  52 22      # glow 40 x 46, centre 72
 $P PlayQuake.info      --pos 162 36      # 44 x 32, centre 184
 # windows: inner 408 x 108 (16 more than measured: Workbench counts its own margin under the labels and showed a scroll knob at 92) plus the borders (left 4, right with scroller 18,
