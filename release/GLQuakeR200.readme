@@ -2,19 +2,19 @@ Short:        GLQuake for R200 Radeons on 68k
 Uploader:     marcus.gerards@googlemail.com (Marcus Gerards)
 Author:       id Software, D. Boon, S. Haeuser, Cowcat, M. Gerards et al.
 Type:         game/shoot
-Version:      1.4
+Version:      1.5
 Architecture: m68k-amigaos >= 3.1
 Distribution: Aminet
-Replaces:     game/shoot/GLQuakeR200.lha
 Requires:     A Radeon 8500, 9000, 9100, 9200 or 9250 with
-              driver/video/RadeonGL 0.8+, 0.12+ for three buffers
-              (Picasso96 3.6+); a 68060, or
+              driver/video/RadeonGL 0.8+, 0.12+ for three buffers,
+              0.14+ for fast panning (the default) (Picasso96 3.6+);
+              a 68060, or
               a 68040 (second build), with FPU; AmigaOS 3.1+ (the start
               window: 3.2); the Quake data (id1 drawer). Also runs on
               any other minigl.library 29.1.
 Kurz:         GLQuake fuer R200-Radeons am 68k
 
-GLQuake for R200 68k  --  RadeonGL edition 1.4  --  12.11.2026
+GLQuake for R200 68k  --  RadeonGL edition 1.5  --  13.11.2026
 
 
 WHAT IT IS
@@ -34,41 +34,29 @@ drawing instead of RadeonGL's extension.
 
 WHAT IS NEW AGAINST THE ARCHIVE IT COMES FROM
 
-New in 1.4:
-  - Options > Video Options > Buffering: two buffers copied with
-    vertical sync (the default), three by panning (ScrollVPort), or three by
-    ChangeScreenBuffer; saved, and switched at once with RadeonGL 0.12
-    (at the next start with an older RadeonGL); vid_buffering 0/1/2 in
-    the console
-  - the installed Quake drawer opens in a window of its own with its
-    three icons in one row; the archive's drawer shows COPYING
-
-New in 1.3:
-  - textures under water again: seen from under water, walls and floors
-    were flat colour and stray polygons. A fault in the compiler's own
-    optimiser made the loops that warp them read each vertex 4 bytes
-    off, in every release up to 1.2; fixed in the source, and built with
-    a compiler that has the maker's fix
-  - demo2 at 1280 x 720 15% faster for it (the stray polygons cost fill
-    rate)
-
-New in 1.2:
+Features:
   - QuakeLauncher, the start window: the game (Quake, the mission packs,
     a mod), screen size, 16 or 32 bits, vertical sync, sound, memory,
     more arguments; it starts the installed build and keeps the settings
-  - Options > Video Options: every screen mode of the library, switched
-    live; vertical sync, on by default (RadeonGL 0.8: no tearing); a mode
-    that does not fit says why
+  - Options > Video Options with three items: Choose screenmode (every
+    screen mode of the library on a page of its own, switched live; a
+    mode that does not fit says why), Display sync (off, ScrollVPort,
+    vsync, ChangeScreenBuffer, or ChangeScreenBuffer without waiting for
+    the DispMessage, marked unsafe; fastest first, ScrollVPort by
+    default;
+    switched at once with RadeonGL 0.12, at the next start with an older
+    RadeonGL) and Screen depth (16 or 32 bit, from the next start);
+    vid_sync 0-4 in the console
+  - 32-bit screens (-bpp 32): smoother shading, no 16-bit dithering
   - Options > Sound Options (Paula or AHI, live), Mouse Look and Mouse
     Speed; menus and console scaled sharp at high resolutions
-  - 32-bit screens (-bpp 32): smoother shading, no 16-bit dithering
-  - the mouse port's left button works again after GLQuake (it set the
-    port to auto-sensing; reported by midwan)
-  - real play about 15% faster (exact caches for the server's map
-    queries, a compact map tree)
-  - the Installer puts in only the build for the processor
+  - the Installer puts in only the build for the processor; the
+    installed Quake drawer opens in a window of its own with its three
+    icons in one row
 
 Fixes:
+  - the mouse port's left button works again after GLQuake (it set the
+    port to auto-sensing; reported by midwan)
   - no more guru BF00 0002 and no frozen water on a 68060: the sound
     interrupt no longer uses the FPU
   - no more bright pixels at polygon seams (gl_keeptjunctions 1)
@@ -90,7 +78,9 @@ Speed:
   - 8-bit lightmaps by default, faster world walk, cheaper models,
     lights, text and sound mixing
   - underwater surfaces with GLQuake's own sine instead of calls
-    into mathieeedoubtrans.library: demo2 +17% against 1.0
+    into mathieeedoubtrans.library: demo2 +17%
+  - real play about 15% faster (exact caches for the server's map
+    queries, a compact map tree)
 
 SPEED
 
@@ -158,6 +148,12 @@ id Software. The game data is not included.
 
 
 HISTORY
+
+1.5 (13.11.2026)
+  - first release on Aminet; Video Options: screenmode page, Display
+    sync, Screen depth
+
+(1.0 to 1.4 were released in the project's source repository only.)
 
 1.4 (12.11.2026)
   - Buffering on the Video Options page (two or three buffers), drawers
