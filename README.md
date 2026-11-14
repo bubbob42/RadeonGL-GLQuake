@@ -29,8 +29,9 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   - **Display sync**, how a finished frame reaches the screen, fastest
     first, each with its cost in brackets on the page: `off` (copied at
     once: fast, tears), `ScrollVPort` (fast: three buffers, the screen
-    panned, no tearing; the default), `vsync` (slower: copied behind the
-    beam), `ChangeScreenBuffer` (slow: three buffers, Intuition
+    panned; a fast 68060 can show torn bands with it, under
+    investigation), `vsync` (slower: copied behind the beam; the default
+    since 1.5.1), `ChangeScreenBuffer` (slow: three buffers, Intuition
     switches) or `ChangeScreenBuffer` (slow / unsafe: the same without
     waiting for each switch's DispMessage; Picasso96's maintainer says
     that is not safe, and it was no faster). On the A4000D with RadeonGL
@@ -163,7 +164,7 @@ New or changed against the Aminet release:
 | `-anycpu` | start a build on a CPU it is not made for |
 | `-bpp 32` | a 32-bit screen (16 is the default; RadeonGL falls back to 16 where a size has no 32-bit mode) |
 | `gl_videosync 0` / `1` | vertical sync off / on (saved as `vid_vsync`, on by default; RadeonGL 0.8) |
-| `vid_sync 0` / `1` / `2` / `3` / `4` | Display sync: off / vsync / ScrollVPort (the default) / ChangeScreenBuffer / ChangeScreenBuffer without the DispMessage wait, unsafe (saved as `vid_vsync` and `vid_bufmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
+| `vid_sync 0` / `1` / `2` / `3` / `4` | Display sync: off / vsync (the default) / ScrollVPort / ChangeScreenBuffer / ChangeScreenBuffer without the DispMessage wait, unsafe (saved as `vid_vsync` and `vid_flipmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
 | `menu_video` | opens the Video Modes page (for a key binding) |
 | `-playbench N` | plays E1M1 from `id1/playbench.txt` (frame, command lines) with a fixed frame time, times N frames, prints the speed and a checksum of the game, and quits (with `+host_framerate 0.03 +map e1m1`) |
 | `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |
@@ -202,8 +203,8 @@ addresses.
 | Display sync | 1280 x 720 | 1920 x 1080 (50 Hz) |
 |---|---:|---:|
 | off (tears) | 32.0 | 28.6 |
-| **ScrollVPort** (the default) | **31.9** | **30.8** |
-| vsync | 29.8 | 22.7 | Columns from different days
+| ScrollVPort | 31.9 | 30.8 |
+| **vsync** (the default since 1.5.1) | **29.8** | **22.7** | Columns from different days
 compare only roughly: the machine itself varies by a few per cent from
 one session to the next (RadeonGL 0.8 ran demo1 at 1280 x 720 at 32.9 fps
 on 7 November and at 30.8 on 9 November). GLQuake also runs about 1.5%
@@ -268,6 +269,10 @@ Quake icons from Mason's art in `package/art/`.
 
 ## History
 
+- **1.5.1** (14.11.2026): Display sync is `vsync` by default again, also
+  for a config.cfg that 1.5 saved with ScrollVPort: on a fast 68060 (60
+  MHz) ScrollVPort showed torn bands, while RadeonGL's cause is
+  investigated. ScrollVPort stays one choice away under Video Options.
 - **1.5** (13.11.2026): Video Options rebuilt: Choose screenmode (its own
   page), Display sync (off, ScrollVPort, vsync, ChangeScreenBuffer, and
   ChangeScreenBuffer without the DispMessage wait, marked unsafe, fastest

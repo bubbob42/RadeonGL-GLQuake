@@ -188,7 +188,14 @@ cvar_t	vid_buffers = {"vid_buffers", "3", true};	// kept for old config.cfg file
 cvar_t	vid_modeid = {"vid_modeid", "0", true};
 cvar_t	vid_conscale = {"vid_conscale", "0", true};	// 2D scale: 0 automatic, else 1, 2, 3 ...
 cvar_t	vid_vsync = {"vid_vsync", "1", true};		// 2026-11-07: vertical sync (the page's switch), on by default
-cvar_t	vid_bufmode = {"vid_bufmode", "1", true};	// 2026-11-12: 0 two buffers with vsync, 1 three by panning (the default since 2026-11-13: tear-free and the fastest with RadeonGL 0.14), 2 three by ChangeScreenBuffer, 3 (2026-11-13) the same without the DispMessage wait (unsafe)
+cvar_t	vid_bufmode = {"vid_bufmode", "0", true};	// kept for old config.cfg files (1.5 saved "1", panning, in every one); the mode is vid_flipmode since 1.5.1
+/* 2026-11-14, 1.5.1 hotfix: 0 two buffers with vsync (the default again), 1
+ * three by panning, 2 three by ChangeScreenBuffer, 3 the same without the
+ * DispMessage wait (unsafe). A new name, so the panning 1.5 wrote into every
+ * config.cfg is not taken over: a user's A4000D (060 @ 60 MHz, Firebird)
+ * showed torn bands with it (RadeonGL reuses the third the display left
+ * before the pan has taken effect, under investigation). */
+cvar_t	vid_flipmode = {"vid_flipmode", "0", true};
 
 void VID_RegisterCvars (void)
 {
@@ -200,6 +207,7 @@ void VID_RegisterCvars (void)
 	Cvar_RegisterVariable (&vid_conscale);
 	Cvar_RegisterVariable (&vid_vsync);
 	Cvar_RegisterVariable (&vid_bufmode);
+	Cvar_RegisterVariable (&vid_flipmode);
 }
 
 //cvar_t _windowed_mouse = {"_windowed_mouse", "1", true}; 
@@ -300,7 +308,7 @@ void DeletePointer(struct Window *QuakeWindow)
 static int	flip_had = -1;		// -1: not touched; 0: there was none; 1: flip_old
 static char	flip_old[16];
 
-/* mode: vid_bufmode's 1 panning, 2 ChangeScreenBuffer, 3 the same unsafe */
+/* mode: vid_flipmode's 1 panning, 2 ChangeScreenBuffer, 3 the same unsafe */
 static void SetFlipVar (int mode)
 {
 	if (flip_had < 0)
@@ -922,8 +930,8 @@ int VID_GetBuffering (void)
 	if (numb == 2)
 		return 0;
 
-	if (vid_bufmode.value == 2 || vid_bufmode.value == 3)
-		return (int) vid_bufmode.value;
+	if (vid_flipmode.value == 2 || vid_flipmode.value == 3)
+		return (int) vid_flipmode.value;
 
 	return 1;
 }
@@ -961,7 +969,7 @@ void VID_SetBuffering (int mode)
 {
 	numb = (mode == 0) ? 2 : 3;
 	vid.numpages = numb;
-	Cvar_SetValue ("vid_bufmode", mode);
+	Cvar_SetValue ("vid_flipmode", mode);
 
 	if (numb == 3)
 		SetFlipVar (mode);
@@ -1310,11 +1318,11 @@ void VID_Init(unsigned char *palette)
 	if (i = COM_CheckParm("-nocachetris")) cachetris = false; // Cowcat
 	if (i = COM_CheckParm("-fixboundbox")) fixboundbox = true; // Cowcat
 
-	// number of buffers: the saved Buffering item (vid_bufmode, 1.4: two
-	// with vertical sync unless the player chose three -- the old
-	// vid_buffers "3" every config.cfg carries is not read any more), the
-	// command line wins
-	numb = (vid_bufmode.value >= 1 && vid_bufmode.value <= 3) ? 3 : 2;
+	// number of buffers: the saved Buffering item (vid_flipmode since 1.5.1,
+	// two with vertical sync unless the player chose three -- the old
+	// vid_buffers and vid_bufmode every config.cfg carries are not read any
+	// more), the command line wins
+	numb = (vid_flipmode.value >= 1 && vid_flipmode.value <= 3) ? 3 : 2;
 
 	if ((i = COM_CheckParm("-buf")) != 0)
 		numb = Q_atoi(com_argv[i+1]);
@@ -1429,7 +1437,7 @@ void VID_Init(unsigned char *palette)
 		Con_Printf("Setting number of buffers to %d...\n", numb);
 
 		if (numb == 3)
-			SetFlipVar ((int) vid_bufmode.value);	// 2026-11-12: panning or ChangeScreenBuffer
+			SetFlipVar ((int) vid_flipmode.value);	// 2026-11-12: panning or ChangeScreenBuffer
 
 		mglChooseNumberOfBuffers(numb);
 

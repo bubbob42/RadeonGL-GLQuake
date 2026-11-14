@@ -1972,7 +1972,7 @@ void M_Sound_Key (int k)
 Options > Video Options: Choose screenmode (its own page, below), Display
 sync (off, vsync, ScrollVPort, ChangeScreenBuffer or, 2026-11-13, the same
 without the DispMessage wait, unsafe: VID_SetSyncMode, live,
-saved as vid_vsync and vid_bufmode) and Screen depth (16 or 32 bit, saved as
+saved as vid_vsync and vid_flipmode) and Screen depth (16 or 32 bit, saved as
 vid_bpp, from the next start).
 */
 
@@ -2006,7 +2006,8 @@ static char		*video_sync[VIDEO_SYNCS] = {"off", "vsync (slower)", "ScrollVPort (
 					  "ChangeScreenBuffer (slow)", "ChangeScreenBuffer (slow / unsafe)"};
 
 /* 2026-11-13 late: the chooser goes through them fastest first; the
- * numbers (vid_sync, saved as vid_vsync and vid_bufmode) stay as they were.
+ * numbers (vid_sync, saved as vid_vsync and vid_flipmode) stay as they were.
+ * 1.5.1 (2026-11-14): vsync is the default again (gl_vidamiga.c vid_flipmode).
  * MEASURED with RadeonGL 0.14 on the A4000D (demo1, 1280 x 720 / 1920 x
  * 1080): off 32.2 / 28.7 fps, ScrollVPort 32.1 / 30.6 (its helper below the
  * game now; 0.13: 26.6 / 21.9), vsync 29.9 / 22.4, ChangeScreenBuffer
@@ -2019,7 +2020,7 @@ static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72};
 static char		*video_sync_help[VIDEO_SYNCS] = {
 	"Copied at once: fast, tears",
 	"Copied behind the beam",
-	"3 buffers, panned: no tearing",
+	"3 buffers, panned: fast",
 	"3 buffers, Intuition switches",
 	"As before, not waiting: unsafe"};
 
@@ -2346,7 +2347,7 @@ void M_Help_Draw (void)
 		M_Print	    (32, 120, "     by Cowcat and Matthey       ");
 
 		// 2026-11-13 (the user): the RadeonGL edition
-		M_PrintWhite(32, 136, "    RadeonGL edition " RGLQ_VERSION "         ");
+		M_PrintWhite(32, 136, "    RadeonGL edition " RGLQ_VERSION "       ");
 		M_Print	    (32, 144, "       by Marcus Gerards         ");
 
 		M_Print	    (32, 160, "<-- Previous            Next -->");

@@ -2,13 +2,13 @@ Short:        GLQuake for R200 Radeons on 68k
 Uploader:     marcus.gerards@googlemail.com (Marcus Gerards)
 Author:       id Software, D. Boon, S. Haeuser, Cowcat, M. Gerards et al.
 Type:         game/shoot
-Version:      1.5
+Version:      1.5.1
 Architecture: m68k-amigaos >= 3.1
 Distribution: Aminet
 Requires:     R200 Radeon, driver/video/RadeonGL.lha, 68040+ FPU, Quake data
 Kurz:         GLQuake fuer R200-Radeons am 68k
 
-GLQuake for R200 68k  --  RadeonGL edition 1.5  --  13.11.2026
+GLQuake for R200 68k  --  RadeonGL edition 1.5.1  --  14.11.2026
 
 
 WHAT IT IS
@@ -36,8 +36,7 @@ Features:
     screen mode of the library on a page of its own, switched live; a
     mode that does not fit says why), Display sync (off, ScrollVPort,
     vsync, ChangeScreenBuffer, or ChangeScreenBuffer without waiting for
-    the DispMessage, marked unsafe; fastest first, ScrollVPort by
-    default;
+    the DispMessage, marked unsafe; fastest first, vsync by default;
     switched at once with RadeonGL 0.12, at the next start with an older
     RadeonGL) and Screen depth (16 or 32 bit, from the next start);
     vid_sync 0-4 in the console
@@ -102,8 +101,8 @@ Display sync, demo1, the same session:
 
     Display sync               1280 x 720   1920 x 1080 (50 Hz)
     off (tears)                   32.0          28.6
-    ScrollVPort (the default)     31.9          30.8
-    vsync                         29.8          22.7
+    ScrollVPort                   31.9          30.8
+    vsync (the default)           29.8          22.7
 
 
 INSTALLATION
@@ -146,6 +145,11 @@ id Software. The game data is not included.
 
 
 HISTORY
+
+1.5.1 (14.11.2026)
+  - Display sync is vsync by default again, also where 1.5 saved
+    ScrollVPort: a fast 68060 showed torn bands with ScrollVPort (being
+    investigated in RadeonGL); ScrollVPort is still in Video Options
 
 1.5 (13.11.2026)
   - first release on Aminet; Video Options: screenmode page, Display
