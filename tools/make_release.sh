@@ -1,7 +1,7 @@
 #!/bin/sh
 # make_release.sh -- the binary release of GLQuake for R200 68k (the RadeonGL
 # edition): release/GLQuakeR200.lha, one drawer GLQuakeR200 with the
-# Installer, ReadMe, COPYING, Files/ (both CPU builds, QuakeLauncher,
+# Installer, ReadMe, COPYING, the Aminet readme, Files/ (both CPU builds, QuakeLauncher,
 # PlayQuake) and the
 # complete source (GPL).
 #   tools/make_release.sh           the archive (the work tree must be committed)
@@ -10,7 +10,7 @@
 #                                    FS-UAE) for the Installer test
 # Run from this repository's root with RadeonGL beside it (../RadeonGL): its
 # Makefile builds GLQuake, and its vamos setup runs the real Amiga LhA.
-# The Aminet .readme is written separately (not kept in this repository).
+# The Aminet .readme is release/GLQuakeR200.readme: beside the archive and inside its drawer.
 set -e
 HERE=$(pwd)
 R=$HERE/../RadeonGL
@@ -39,6 +39,8 @@ cp README.md "$D/ReadMe"
 cp package/ReadMe.info "$D/ReadMe.info"
 cp COPYING "$D/COPYING"
 cp package/COPYING.info "$D/COPYING.info"
+cp release/GLQuakeR200.readme "$D/GLQuakeR200.readme"      # the Aminet readme, inside too (the user, 2026-11-14)
+cp package/AminetReadme.info "$D/GLQuakeR200.readme.info"
 cp package/GLQuakeR200.info "$STAGE/GLQuakeR200.info"
 git archive HEAD | tar -x -C "$D/Source"
 rm -rf "$D/Source/release"              # no archive inside the archive
