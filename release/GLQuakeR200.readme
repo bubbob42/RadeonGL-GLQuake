@@ -5,7 +5,6 @@ Type:         game/shoot
 Version:      1.5.1
 Architecture: m68k-amigaos >= 3.1
 Distribution: Aminet
-Replaces:     game/shoot/GLQuakeR200.lha
 Requires:     R200 Radeon, driver/video/RadeonGL.lha, 68040+ FPU, Quake data
 Kurz:         GLQuake fuer R200-Radeons am 68k
 
@@ -152,13 +151,13 @@ id Software. The game data is not included.
 HISTORY
 
 1.5.1 (14.11.2026)
+  - first release on Aminet
   - Display sync is vsync by default again, also where 1.5 saved
     ScrollVPort: a fast 68060 showed torn bands with ScrollVPort (fixed
     in RadeonGL 0.15); ScrollVPort is still in Video Options
 
 1.5 (13.11.2026)
-  - first release on Aminet; Video Options: screenmode page, Display
-    sync, Screen depth
+  - Video Options: screenmode page, Display sync, Screen depth
 
 (1.0 to 1.4 were released in the project's source repository only.)
 
