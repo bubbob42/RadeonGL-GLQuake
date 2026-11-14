@@ -5,6 +5,7 @@ Type:         game/shoot
 Version:      1.5.1
 Architecture: m68k-amigaos >= 3.1
 Distribution: Aminet
+Replaces:     game/shoot/GLQuakeR200.lha
 Requires:     R200 Radeon, driver/video/RadeonGL.lha, 68040+ FPU, Quake data
 Kurz:         GLQuake fuer R200-Radeons am 68k
 
