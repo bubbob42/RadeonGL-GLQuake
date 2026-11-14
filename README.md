@@ -29,15 +29,16 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   - **Display sync**, how a finished frame reaches the screen, fastest
     first, each with its cost in brackets on the page: `off` (copied at
     once: fast, tears), `ScrollVPort` (fast: three buffers, the screen
-    panned; a fast 68060 can show torn bands with it, under
-    investigation), `vsync` (slower: copied behind the beam; the default
+    panned; tear-free from RadeonGL 0.15 on: with 0.14 a fast 68060 showed
+    torn bands), `vsync` (slower: copied behind the beam; the default
     since 1.5.1), `ChangeScreenBuffer` (slow: three buffers, Intuition
     switches) or `ChangeScreenBuffer` (slow / unsafe: the same without
     waiting for each switch's DispMessage; Picasso96's maintainer says
     that is not safe, and it was no faster). On the A4000D with RadeonGL
     0.14, demo1 at 1280 x 720: 32.2, 32.1, 29.9, 21.6 and 21.6 fps; at
     1920 x 1080: 28.7, 30.6, 22.4, 17.0 and 17.0. ScrollVPort is that fast
-    from RadeonGL 0.14 on (0.13: 26.6 and 21.9); the unsafe way needs 0.14
+    from RadeonGL 0.14 on (0.13: 26.6 and 21.9; 0.15, which stops its
+    tearing, measured 31.5 and 27.9 in its own A/B); the unsafe way needs 0.14
     (older versions treat it as the one before it). Live with RadeonGL
     0.12, with an older RadeonGL the three-buffer ways from the next
     start.
@@ -128,7 +129,8 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   FPU. Each build refuses a CPU it is not made for; `-anycpu` overrides.
 - A `minigl.library` 29.1 for your graphics hardware.
   For RadeonGL's faster world drawing: RadeonGL 0.7 or later; for vertical
-  sync and every screen mode of the card: RadeonGL 0.8.
+  sync and every screen mode of the card: RadeonGL 0.8; for ScrollVPort
+  without tearing: RadeonGL 0.15.
 - The Quake data: the `id1` drawer with `pak0.pak` (shareware) and, for the
   full game, `pak1.pak`. They are not part of this package.
 

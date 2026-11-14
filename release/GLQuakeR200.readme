@@ -102,19 +102,23 @@ Display sync, demo1, the same session:
 
     Display sync               1280 x 720   1920 x 1080 (50 Hz)
     off (tears)                   32.0          28.6
-    ScrollVPort                   31.9          30.8
+    ScrollVPort (tore on 0.14)    31.9          30.8
     vsync (the default)           29.8          22.7
+
+RadeonGL 0.15 stops ScrollVPort tearing; its own A/B measured 31.5 and
+27.9 fps at those sizes (another session).
 
 
 INSTALLATION
 
-Install RadeonGL 0.14 first. Then double-click Install in this
-package: it asks for the drawer that holds Quake's data drawer (id1) and
-copies the build for your processor (GLQuake for a 68060, GLQuake040 for
-a 68040), the start window QuakeLauncher, the start script PlayQuake and
-the ReadMe there; a GLQuake already there that is not this edition is
-kept as GLQuake.old. Double-click QuakeLauncher to play. ReadMe has the
-details and the new options.
+Install RadeonGL 0.15 first (with 0.14, ScrollVPort tears). Then
+double-click Install in this package: it asks for the drawer that holds
+Quake's data drawer (id1) and copies the build for your processor
+(GLQuake for a 68060, GLQuake040 for a 68040), the start window
+QuakeLauncher, the start script PlayQuake and the ReadMe there; a
+GLQuake already there that is not this edition is kept as GLQuake.old.
+Double-click QuakeLauncher to play. ReadMe has the details and the new
+options.
 
 
 SOURCE CODE
@@ -149,8 +153,8 @@ HISTORY
 
 1.5.1 (14.11.2026)
   - Display sync is vsync by default again, also where 1.5 saved
-    ScrollVPort: a fast 68060 showed torn bands with ScrollVPort (being
-    investigated in RadeonGL); ScrollVPort is still in Video Options
+    ScrollVPort: a fast 68060 showed torn bands with ScrollVPort (fixed
+    in RadeonGL 0.15); ScrollVPort is still in Video Options
 
 1.5 (13.11.2026)
   - first release on Aminet; Video Options: screenmode page, Display
