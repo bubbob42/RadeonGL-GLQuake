@@ -2,14 +2,14 @@ Short:        GLQuake for R200 Radeons on 68k
 Uploader:     marcus.gerards@googlemail.com (Marcus Gerards)
 Author:       id Software, D. Boon, S. Haeuser, Cowcat, M. Gerards et al.
 Type:         game/shoot
-Version:      1.5.2
+Version:      1.6
 Architecture: m68k-amigaos >= 3.1
 Distribution: Aminet
 Replaces:     game/shoot/GLQuakeR200.lha
 Requires:     R200 Radeon, driver/video/RadeonGL.lha, 68040+ FPU, Quake data
 Kurz:         GLQuake fuer R200-Radeons am 68k
 
-GLQuake for R200 68k  --  RadeonGL edition 1.5.2  --  22.11.2026
+GLQuake for R200 68k  --  RadeonGL edition 1.6  --  22.11.2026
 
 
 WHAT IT IS
@@ -152,7 +152,7 @@ id Software. The game data is not included.
 
 HISTORY
 
-1.5.2 (22.11.2026)
+1.6 (22.11.2026)
   - Video Options: Texture filter (Sharp, Bilinear, Trilinear)
 
 1.5.1 (14.11.2026)

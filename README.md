@@ -1,4 +1,4 @@
-# GLQuake for minigl.library -- RadeonGL edition 1.5
+# GLQuake for minigl.library -- RadeonGL edition 1.6
 
 GLQuake for AmigaOS 3.x on a 68040 or 68060, as a `minigl.library` 29.1
 client (dispatch interface ABI 5). It runs on any `minigl.library` 29.1:
@@ -22,7 +22,7 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   them in `QuakeLauncher.prefs` and starts the game; its window comes back
   when the game ends. It needs AmigaOS 3.2's ReAction classes; on 3.1 the
   start script `PlayQuake` does the job.
-- **Options > Video Options** (1.5; Texture filter since 1.5.2), four items:
+- **Options > Video Options** (1.5; Texture filter since 1.6), four items:
   - **Choose screenmode** opens the list of the screen modes the library
     offers, switched live with Enter. A mode that does not open says why,
     for example "not enough memory for the back buffer".
@@ -281,7 +281,7 @@ Quake icons from Mason's art in `package/art/`.
 
 ## History
 
-- **1.5.2** (22.11.2026): Texture filter under Video Options: Sharp,
+- **1.6** (22.11.2026): Texture filter under Video Options: Sharp,
   Bilinear (the default) or Trilinear, switched at once and saved in
   config.cfg (as the `gl_texturemode` command). Sharp and Bilinear look as
   named with RadeonGL 0.18, which fixed two swapped mipmap filters.
