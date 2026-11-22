@@ -39,3 +39,6 @@ void Draw_String (int x, int y, char *str);
 void Draw_StringN (int x, int y, const char *str, int len);
 qpic_t *Draw_PicFromWad (char *name);
 qpic_t *Draw_CachePic (char *path);
+qboolean Draw_SetTextureMode (char *name);	// 2026-11-22: gl_draw.c
+char *Draw_TextureModeName (void);
+void Draw_WriteTextureMode (FILE *f);

@@ -22,7 +22,7 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   them in `QuakeLauncher.prefs` and starts the game; its window comes back
   when the game ends. It needs AmigaOS 3.2's ReAction classes; on 3.1 the
   start script `PlayQuake` does the job.
-- **Options > Video Options** (1.5), three items:
+- **Options > Video Options** (1.5; Texture filter since 1.5.2), four items:
   - **Choose screenmode** opens the list of the screen modes the library
     offers, switched live with Enter. A mode that does not open says why,
     for example "not enough memory for the back buffer".
@@ -43,6 +43,14 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
     0.12, with an older RadeonGL the three-buffer ways from the next
     start.
   - **Screen depth**, 16 or 32 bit, from the next start.
+  - **Texture filter**, live: `Sharp` (square texels up close, the mip
+    levels blended: the look of software Quake), `Bilinear` (smooth texels,
+    visible bands where the mip level changes; GLQuake's default) or
+    `Trilinear` (smooth, no bands). Saved in config.cfg as the
+    `gl_texturemode` command; a mode set from the console that is none of
+    the three shows as `Custom`. The names hold with RadeonGL 0.18 and
+    later: up to 0.17 the card drew Sharp's and Bilinear's mip modes the
+    wrong way round.
 - **Options > Sound Options:** Paula or AHI and the rate, restarted live.
   **Mouse Look** and **Mouse Speed** (down to 0.5) on the Options page; the
   Mouse Look box shows a `+mlook` too.
@@ -130,7 +138,8 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
 - A `minigl.library` 29.1 for your graphics hardware.
   For RadeonGL's faster world drawing: RadeonGL 0.7 or later; for vertical
   sync and every screen mode of the card: RadeonGL 0.8; for ScrollVPort
-  without tearing: RadeonGL 0.15.
+  without tearing: RadeonGL 0.15; for Texture filter's Sharp and Bilinear
+  to look as named: RadeonGL 0.18.
 - The Quake data: the `id1` drawer with `pak0.pak` (shareware) and, for the
   full game, `pak1.pak`. They are not part of this package.
 
@@ -167,6 +176,7 @@ New or changed against the Aminet release:
 | `-bpp 32` | a 32-bit screen (16 is the default; RadeonGL falls back to 16 where a size has no 32-bit mode) |
 | `gl_videosync 0` / `1` | vertical sync off / on (saved as `vid_vsync`, on by default; RadeonGL 0.8) |
 | `vid_sync 0` / `1` / `2` / `3` / `4` | Display sync: off / vsync (the default) / ScrollVPort / ChangeScreenBuffer / ChangeScreenBuffer without the DispMessage wait, unsafe (saved as `vid_vsync` and `vid_flipmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
+| `gl_texturemode <mode>` | the texture filter, any of GL's six (Video Options offers three; saved in config.cfg); without a mode it names the running one |
 | `menu_video` | opens the Video Modes page (for a key binding) |
 | `-playbench N` | plays E1M1 from `id1/playbench.txt` (frame, command lines) with a fixed frame time, times N frames, prints the speed and a checksum of the game, and quits (with `+host_framerate 0.03 +map e1m1`) |
 | `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |
@@ -271,6 +281,10 @@ Quake icons from Mason's art in `package/art/`.
 
 ## History
 
+- **1.5.2** (22.11.2026): Texture filter under Video Options: Sharp,
+  Bilinear (the default) or Trilinear, switched at once and saved in
+  config.cfg (as the `gl_texturemode` command). Sharp and Bilinear look as
+  named with RadeonGL 0.18, which fixed two swapped mipmap filters.
 - **1.5.1** (14.11.2026): Display sync is `vsync` by default again, also
   for a config.cfg that 1.5 saved with ScrollVPort: on a fast 68060 (60
   MHz) ScrollVPort showed torn bands, while RadeonGL's cause is

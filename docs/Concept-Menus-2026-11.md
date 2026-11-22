@@ -231,6 +231,14 @@ each built and tested before the next.
   dropped as an autorepeat -- `Key_ClearStates` after the switch. A4000D:
   640x480 -> 1280x720 -> 640x480 from the page, textures intact at both
   sizes, 2 resizes, nothing dropped, 640x480 saved.
+- **Texture filter (2026-11-22, the user: "offer the filtering choice in
+  video options").** A fourth Video Options row: Sharp
+  (GL_NEAREST_MIPMAP_LINEAR), Bilinear (GL_LINEAR_MIPMAP_NEAREST, the
+  default) or Trilinear (GL_LINEAR_MIPMAP_LINEAR), live
+  (`Draw_SetTextureMode`), saved as `gl_texturemode <mode>` in config.cfg
+  (`Draw_WriteTextureMode`: a cvar cannot share the command's name). Any
+  other mode shows as Custom. Null card (RadeonGL GLQuakeTexModeNull):
+  saved and set again at the next start. The row on the card: to look at.
 - **U7 done.** The 2D (menus, console, status bar) at a whole multiple k of
   the screen's pixels: the largest k with the 2D at least 640 wide and 200
   high (1280x720: 640x360, k 2; 1600x1200: 800x600; up to 1279 wide: 1:1),

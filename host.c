@@ -385,6 +385,7 @@ void Host_WriteConfiguration (void)
     
 		Key_WriteBindings (f);
 		Cvar_WriteVariables (f);
+		Draw_WriteTextureMode (f);	// 2026-11-22: Video Options > Texture filter
 
 		fclose (f);
 	}

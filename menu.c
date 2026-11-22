@@ -1967,13 +1967,15 @@ void M_Sound_Key (int k)
 }
 
 //=============================================================================
-/* VIDEO MENU (2026-11-06; 2026-11-13 three items, the user)
+/* VIDEO MENU (2026-11-06; 2026-11-13 three items, the user; 2026-11-22 four)
 
 Options > Video Options: Choose screenmode (its own page, below), Display
 sync (off, vsync, ScrollVPort, ChangeScreenBuffer or, 2026-11-13, the same
 without the DispMessage wait, unsafe: VID_SetSyncMode, live,
-saved as vid_vsync and vid_flipmode) and Screen depth (16 or 32 bit, saved as
-vid_bpp, from the next start).
+saved as vid_vsync and vid_flipmode), Screen depth (16 or 32 bit, saved as
+vid_bpp, from the next start) and, 2026-11-22, Texture filter (Sharp,
+Bilinear, Trilinear: gl_texturemode, live, saved as that command in
+config.cfg).
 */
 
 #define VIDEO_MAXMODES	40
@@ -1985,7 +1987,7 @@ vid_bpp, from the next start).
  * ScrollVPort, ChangeScreenBuffer -- the two separate items of 1.4 read as
  * independent, and they are not) and Screen depth (16 or 32 bit, from the
  * next start: the library keeps a screen's depth while it runs). */
-#define VIDEO_ITEMS	3
+#define VIDEO_ITEMS	4
 
 static vidmode_t	video_modes[VIDEO_MAXMODES];
 static int		video_nummodes, video_cursor;
@@ -2015,7 +2017,43 @@ static char		*video_sync[VIDEO_SYNCS] = {"off", "vsync (slower)", "ScrollVPort (
 static int		video_sync_order[VIDEO_SYNCS] = {0, 2, 1, 3, 4};
 
 /* the items' rows: Display sync's value takes the line under its label */
-static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72};
+static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72, 80};
+
+/* 2026-11-22 (the user: "offer the filtering choice in video options"):
+ * three of gl_texturemode's six modes, named for what they look like.
+ * Bilinear is GLQuake's default. Sharp keeps the levels blended (no bands)
+ * with square texels up close, as many players set software Quake's look.
+ * A mode set from the console that is none of them shows as Custom; Enter
+ * goes to Bilinear from there. The names hold with RadeonGL 0.18 and later:
+ * up to 0.17 the R200 drew NEAREST_MIPMAP_LINEAR and LINEAR_MIPMAP_NEAREST
+ * the wrong way round (RadeonGL src/r200/r200reg.h). */
+#define VIDEO_FILTERS	3
+
+static char		*video_filter[VIDEO_FILTERS] = {"Sharp", "Bilinear", "Trilinear"};
+static char		*video_filter_mode[VIDEO_FILTERS] = {"GL_NEAREST_MIPMAP_LINEAR",
+					  "GL_LINEAR_MIPMAP_NEAREST", "GL_LINEAR_MIPMAP_LINEAR"};
+static char		*video_filter_help[VIDEO_FILTERS] = {
+	"Square texels, as software Quake",
+	"Smooth, mip bands far off",
+	"Smooth, no mip bands"};
+
+/* the running filter's place in video_filter, -1 for another mode */
+static int Video_FilterIndex (void)
+{
+	char	*name;
+	int	i;
+
+	name = Draw_TextureModeName ();
+
+	if (!name)
+		return -1;
+
+	for (i = 0; i < VIDEO_FILTERS; i++)
+		if (!Q_strcasecmp (name, video_filter_mode[i]))
+			return i;
+
+	return -1;
+}
 
 static char		*video_sync_help[VIDEO_SYNCS] = {
 	"Copied at once: fast, tears",
@@ -2080,7 +2118,7 @@ void M_Video_Draw (void)
 {
 	qpic_t	*p;
 	char	v[40];
-	int	w, h, y, m;
+	int	w, h, y, m, f;
 
 	p = Draw_CachePic ("gfx/p_option.lmp");
 	M_DrawPic ((320 - p->width) / 2, 4, p);
@@ -2097,10 +2135,13 @@ void M_Video_Draw (void)
 	M_Print (24, video_item_y[2], "Screen depth");
 	sprintf (v, "%d bit", Video_SavedBpp ());
 	M_Print (24 + 18 * 8, video_item_y[2], v);
+	f = Video_FilterIndex ();
+	M_Print (24, video_item_y[3], "Texture filter");
+	M_Print (24 + 18 * 8, video_item_y[3], f >= 0 ? video_filter[f] : "Custom");
 
 	M_DrawCharacter (24 - 12, video_item_y[video_item], 12 + ((int)(realtime * 4) & 1));
 
-	y = video_item_y[2] + 24;
+	y = video_item_y[VIDEO_ITEMS - 1] + 24;
 	sprintf (v, "Running: %dx%d, %d bit", w, h, VID_GetBpp ());
 	M_PrintWhite (48, y, v);
 
@@ -2122,11 +2163,16 @@ void M_Video_Draw (void)
 			M_Print (48, y + 24, "Enter or arrows: the next");
 			break;
 
-		default:
+		case 2:
 			M_Print (48, y + 16, "Enter: 16 or 32 bit");
 
 			if (Video_SavedBpp () != VID_GetBpp ())
 				M_Print (48, y + 24, "From the next start");
+			break;
+
+		default:
+			M_Print (48, y + 16, f >= 0 ? video_filter_help[f] : "Set by gl_texturemode");
+			M_Print (48, y + 24, "Enter or arrows: the next");
 			break;
 	}
 
@@ -2135,9 +2181,10 @@ void M_Video_Draw (void)
 
 void M_Video_Key (int k)
 {
-	int	step;
+	int	step, back;
 
 	step = 1;
+	back = (k == K_LEFTARROW);
 
 	switch (k)
 	{
@@ -2156,8 +2203,6 @@ void M_Video_Key (int k)
 			break;
 
 		case K_LEFTARROW:
-			step = VIDEO_SYNCS - 1;	// one back of the five ways
-			/* fall through */
 		case K_RIGHTARROW:
 		case K_ENTER:
 			S_LocalSound (k == K_ENTER ? "misc/menu2.wav" : "misc/menu1.wav");
@@ -2173,12 +2218,28 @@ void M_Video_Key (int k)
 
 				vid_switch_error[0] = 0;
 
+				if (back)
+					step = VIDEO_SYNCS - 1;	// one back of the five ways
+
 				for (pos = 0; pos < VIDEO_SYNCS - 1 && video_sync_order[pos] != VID_GetSyncMode (); pos++)
 					;
 				VID_SetSyncMode (video_sync_order[(pos + step) % VIDEO_SYNCS]);
 			}
-			else
+			else if (video_item == 2)
 				Cvar_SetValue ("vid_bpp", Video_SavedBpp () == 16 ? 32 : 16);
+			else
+			{
+				int	f;
+
+				f = Video_FilterIndex ();
+
+				if (f < 0)
+					f = 1;	// Custom: Bilinear, GLQuake's default
+				else
+					f = (f + (back ? VIDEO_FILTERS - 1 : 1)) % VIDEO_FILTERS;
+
+				Draw_SetTextureMode (video_filter_mode[f]);
+			}
 			break;
 	}
 }

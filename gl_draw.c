@@ -434,39 +434,28 @@ glmode_t modes[] =
 
 /*
 ===============
-Draw_TextureMode_f
+Draw_SetTextureMode
+
+2026-11-22: the texture filter by its GL name, for the gl_texturemode
+command and Video Options > Texture filter. Every mipmapped texture gets
+it at once (no upload: only its filter parameters); lightmaps keep theirs.
+false for a name not in modes[].
 ===============
 */
 
-void Draw_TextureMode_f (void)
+qboolean Draw_SetTextureMode (char *name)
 {
 	int		i;
 	gltexture_t	*glt;
 
-	if (Cmd_Argc() == 1)
-	{
-		for (i=0 ; i< 6 ; i++)
-			if (gl_filter_min == modes[i].minimize)
-			{
-				Con_Printf ("%s\n", modes[i].name);
-				return;
-			}
-
-		Con_Printf ("current filter is unknown???\n");
-		return;
-	}
-
 	for (i=0 ; i< 6 ; i++)
 	{
-		if (!Q_strcasecmp (modes[i].name, Cmd_Argv(1) ) )
+		if (!Q_strcasecmp (modes[i].name, name) )
 			break;
 	}
 
 	if (i == 6)
-	{
-		Con_Printf ("bad filter name\n");
-		return;
-	}
+		return false;
 
 	gl_filter_min = modes[i].minimize;
 	gl_filter_max = modes[i].maximize;
@@ -481,6 +470,59 @@ void Draw_TextureMode_f (void)
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);
 		}
 	}
+
+	return true;
+}
+
+/* the running filter's GL name; NULL for one set another way (-texturemode
+ * pairs a mode with no entry here) */
+char *Draw_TextureModeName (void)
+{
+	int	i;
+
+	for (i=0 ; i< 6 ; i++)
+		if (gl_filter_min == modes[i].minimize && gl_filter_max == modes[i].maximize)
+			return modes[i].name;
+
+	return NULL;
+}
+
+/* 2026-11-22: config.cfg keeps the filter as the command that sets it (a
+ * cvar cannot share the command's name); executed at the next start before
+ * any map's texture is loaded */
+void Draw_WriteTextureMode (FILE *f)
+{
+	char	*name;
+
+	name = Draw_TextureModeName ();
+
+	if (name)
+		fprintf (f, "gl_texturemode %s\n", name);
+}
+
+/*
+===============
+Draw_TextureMode_f
+===============
+*/
+
+void Draw_TextureMode_f (void)
+{
+	char	*name;
+
+	if (Cmd_Argc() == 1)
+	{
+		name = Draw_TextureModeName ();
+
+		if (name)
+			Con_Printf ("%s\n", name);
+		else
+			Con_Printf ("current filter is unknown???\n");
+		return;
+	}
+
+	if (!Draw_SetTextureMode (Cmd_Argv(1)))
+		Con_Printf ("bad filter name\n");
 }
 
 /*
