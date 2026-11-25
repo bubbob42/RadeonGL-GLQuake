@@ -601,8 +601,11 @@ void SCR_DrawFPS (void)
 
 	sprintf(st, "%3d FPS", lastfps);
 
+	/* 2026-11-22 (the user: "a live fps display in an upper corner"): the
+	 * top right corner, 8 pixels in -- free of the notify lines, the
+	 * turtle and the net icon on the left; it sat above the status bar */
 	x = vid.width - strlen(st) * 8 - 8;
-	y = vid.height - sb_lines - 8;
+	y = 8;
 
 	Draw_String(x, y, st);
 
