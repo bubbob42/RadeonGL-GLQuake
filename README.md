@@ -177,6 +177,7 @@ New or changed against the Aminet release:
 | `gl_videosync 0` / `1` | vertical sync off / on (saved as `vid_vsync`, on by default; RadeonGL 0.8) |
 | `vid_sync 0` / `1` / `2` / `3` / `4` | Display sync: off / vsync (the default) / ScrollVPort / ChangeScreenBuffer / ChangeScreenBuffer without the DispMessage wait, unsafe (saved as `vid_vsync` and `vid_flipmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
 | `gl_texturemode <mode>` | the texture filter, any of GL's six (Video Options offers three; saved in config.cfg); without a mode it names the running one |
+| `gl_anisotropy 1` / `2` / `4` / `8` / `16` | anisotropic filtering: sharper floors and walls seen at a slant (Video Options > Anisotropy; 1 is off, the default; live; saved in config.cfg; needs a minigl.library with GL_EXT_texture_filter_anisotropic, RadeonGL 0.17 or later) |
 | `menu_video` | opens the Video Modes page (for a key binding) |
 | `-playbench N` | plays E1M1 from `id1/playbench.txt` (frame, command lines) with a fixed frame time, times N frames, prints the speed and a checksum of the game, and quits (with `+host_framerate 0.03 +map e1m1`) |
 | `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |

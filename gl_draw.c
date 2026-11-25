@@ -487,9 +487,94 @@ char *Draw_TextureModeName (void)
 	return NULL;
 }
 
+/*
+===============
+Anisotropic filtering (2026-11-25, the user: "yes I want that")
+
+As gl_texturemode: a command (gl_anisotropy 1, 2, 4, 8 or 16; 1 is off),
+saved in config.cfg by Draw_WriteTextureMode, live for every mipmapped
+texture and given to each new one; Video Options > Anisotropy. Only with
+GL_EXT_texture_filter_anisotropic: the library's maximum caps the wish.
+Never set while off: with RadeonGL a texture's anisotropy parameter takes
+the context to its wider validate routine for the rest of the run.
+===============
+*/
+
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT		0x84FE
+#endif
+#ifndef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT	0x84FF
+#endif
+
+static int	aniso_wish = 1;		// as asked (config.cfg may come before the library is asked)
+static int	aniso_max = 0;		// the library's maximum; 0 not asked yet, 1 none
+static int	aniso_set = 0;		// textures were given a value above 1
+
+/* the library's maximum, a power of two (1: no anisotropy) */
+int Draw_MaxAnisotropy (void)
+{
+	extern const char *gl_extensions;	// gl_vidamiga.c
+	GLfloat	m;
+	int	n;
+
+	if (aniso_max == 0 && gl_extensions)
+	{
+		aniso_max = 1;
+
+		if (strstr (gl_extensions, "GL_EXT_texture_filter_anisotropic"))
+		{
+			m = 1.0f;
+			glGetFloatv (GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &m);
+
+			for (n = 1; n * 2 <= (int) m && n < 16; n *= 2)
+				;
+			aniso_max = n;
+		}
+	}
+
+	return aniso_max ? aniso_max : 1;
+}
+
+/* the value in effect: the wish, capped by the library */
+int Draw_Anisotropy (void)
+{
+	int	m;
+
+	m = Draw_MaxAnisotropy ();
+	return aniso_wish < m ? aniso_wish : m;
+}
+
+/* the wish rounded down to a power of two; every mipmapped texture gets it */
+void Draw_SetAnisotropy (int n)
+{
+	int	i, a;
+	gltexture_t	*glt;
+
+	for (a = 1; a * 2 <= n && a < 16; a *= 2)
+		;
+	aniso_wish = a;
+	a = Draw_Anisotropy ();
+
+	if (a == 1 && !aniso_set)
+		return;		// off, and never on: no texture is touched
+
+	for (i=0, glt=gltextures ; i<numgltextures ; i++, glt++)
+	{
+		if (glt->mipmap)
+		{
+			GL_Bind (glt->texnum);
+			glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat) a);
+		}
+	}
+
+	if (a > 1)
+		aniso_set = 1;
+}
+
 /* 2026-11-22: config.cfg keeps the filter as the command that sets it (a
  * cvar cannot share the command's name); executed at the next start before
- * any map's texture is loaded */
+ * any map's texture is loaded. 2026-11-25: the anisotropy wish too. */
 void Draw_WriteTextureMode (FILE *f)
 {
 	char	*name;
@@ -498,6 +583,29 @@ void Draw_WriteTextureMode (FILE *f)
 
 	if (name)
 		fprintf (f, "gl_texturemode %s\n", name);
+
+	fprintf (f, "gl_anisotropy %d\n", aniso_wish);
+}
+
+/*
+===============
+Draw_Anisotropy_f
+===============
+*/
+
+void Draw_Anisotropy_f (void)
+{
+	if (Cmd_Argc() == 1)
+	{
+		if (Draw_MaxAnisotropy () < 2)
+			Con_Printf ("gl_anisotropy: this minigl.library has no anisotropic filtering\n");
+		else
+			Con_Printf ("gl_anisotropy %d (asked %d, %d at most)\n", Draw_Anisotropy (), aniso_wish,
+				    Draw_MaxAnisotropy ());
+		return;
+	}
+
+	Draw_SetAnisotropy (Q_atoi (Cmd_Argv(1)));
 }
 
 /*
@@ -589,6 +697,7 @@ void Draw_Init (void)
 	#endif
 	
 	Cmd_AddCommand ("gl_texturemode", &Draw_TextureMode_f);
+	Cmd_AddCommand ("gl_anisotropy", &Draw_Anisotropy_f);
 
 	//crosshair_pic = { 8, 8, 8, crosshair_data };
 	//crosshair_texture = GL_LoadTexture ("crosshair", 128, 128, crosshair_pic, false, 0);
@@ -1676,6 +1785,12 @@ void GL_Upload32 (unsigned *data, int width, int height, qboolean mipmap, qboole
 	{
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);
+
+		if (aniso_wish > 1 && Draw_Anisotropy () > 1)
+		{
+			glTexParameterf (GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat) Draw_Anisotropy ());
+			aniso_set = 1;
+		}
 	}
 
 	else
