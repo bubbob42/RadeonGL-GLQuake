@@ -1976,7 +1976,8 @@ saved as vid_vsync and vid_flipmode), Screen depth (16 or 32 bit, saved as
 vid_bpp, from the next start) and, 2026-11-22, Texture filter (Sharp,
 Bilinear, Trilinear: gl_texturemode, live, saved as that command in
 config.cfg) and, 2026-11-25, Anisotropy (Off, 2x .. 16x up to the library's
-maximum: gl_anisotropy, live, saved as that command).
+maximum: gl_anisotropy, live, saved as that command) and Frame rate (Off or
+On: drawfps, live, saved).
 */
 
 #define VIDEO_MAXMODES	40
@@ -1988,7 +1989,7 @@ maximum: gl_anisotropy, live, saved as that command).
  * ScrollVPort, ChangeScreenBuffer -- the two separate items of 1.4 read as
  * independent, and they are not) and Screen depth (16 or 32 bit, from the
  * next start: the library keeps a screen's depth while it runs). */
-#define VIDEO_ITEMS	5
+#define VIDEO_ITEMS	6
 
 static vidmode_t	video_modes[VIDEO_MAXMODES];
 static int		video_nummodes, video_cursor;
@@ -2018,7 +2019,7 @@ static char		*video_sync[VIDEO_SYNCS] = {"off", "vsync (slower)", "ScrollVPort (
 static int		video_sync_order[VIDEO_SYNCS] = {0, 2, 1, 3, 4};
 
 /* the items' rows: Display sync's value takes the line under its label */
-static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72, 80, 88};
+static int		video_item_y[VIDEO_ITEMS] = {48, 56, 72, 80, 88, 96};
 
 /* 2026-11-22 (the user: "offer the filtering choice in video options"):
  * three of gl_texturemode's six modes, named for what they look like.
@@ -2056,6 +2057,15 @@ static int Video_NextAniso (int back)
 		return (a <= 1) ? m : a / 2;
 
 	return (a >= m) ? 1 : a * 2;
+}
+
+/* 2026-11-25 (the user: "add a menu option in video options to enable it",
+ * the fps counter): drawfps, gl_screen.c SCR_DrawFPS, an archived cvar, so
+ * config.cfg keeps it. The menu switches between 0 and 1; a 2 from the
+ * console (the corner plus a console line each second) shows as such */
+static float Video_DrawFps (void)
+{
+	return Cvar_VariableValue ("drawfps");
 }
 
 /* the running filter's place in video_filter, -1 for another mode */
@@ -2169,6 +2179,16 @@ void M_Video_Draw (void)
 		sprintf (v, "%dx", Draw_Anisotropy ());
 
 	M_Print (24 + 18 * 8, video_item_y[4], v);
+	M_Print (24, video_item_y[5], "Frame rate");
+
+	if (!Video_DrawFps ())
+		strcpy (v, "Off");
+	else if (Video_DrawFps () == 2)
+		strcpy (v, "On + console");
+	else
+		strcpy (v, "On");
+
+	M_Print (24 + 18 * 8, video_item_y[5], v);
 
 	M_DrawCharacter (24 - 12, video_item_y[video_item], 12 + ((int)(realtime * 4) & 1));
 
@@ -2206,7 +2226,7 @@ void M_Video_Draw (void)
 			M_Print (48, y + 24, "Enter or arrows: the next");
 			break;
 
-		default:
+		case 4:
 			if (Draw_MaxAnisotropy () < 2)
 			{
 				M_Print (48, y + 16, "This minigl.library has none");
@@ -2222,6 +2242,11 @@ void M_Video_Draw (void)
 				M_Print (48, y + 32, "R200: Trilinear gets mip bands");
 
 			M_Print (48, y + 40, "Enter or arrows: the next");
+			break;
+
+		default:
+			M_Print (48, y + 16, "Frames a second, top right");
+			M_Print (48, y + 24, "Enter or arrows: on or off");
 			break;
 	}
 
@@ -2281,6 +2306,8 @@ void M_Video_Key (int k)
 				if (Draw_MaxAnisotropy () >= 2)
 					Draw_SetAnisotropy (Video_NextAniso (back));
 			}
+			else if (video_item == 5)
+				Cvar_SetValue ("drawfps", Video_DrawFps () ? 0 : 1);
 			else
 			{
 				int	f;

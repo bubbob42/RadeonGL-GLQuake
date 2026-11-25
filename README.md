@@ -1,4 +1,4 @@
-# GLQuake for minigl.library -- RadeonGL edition 1.7
+# GLQuake for minigl.library -- RadeonGL edition 1.7.1
 
 GLQuake for AmigaOS 3.x on a 68040 or 68060, as a `minigl.library` 29.1
 client (dispatch interface ABI 5). It runs on any `minigl.library` 29.1:
@@ -23,7 +23,7 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
   when the game ends. It needs AmigaOS 3.2's ReAction classes; on 3.1 the
   start script `PlayQuake` does the job.
 - **Options > Video Options** (1.5; Texture filter since 1.6, Anisotropy
-  since 1.7), five items:
+  since 1.7, Frame rate since 1.7.1), six items:
   - **Choose screenmode** opens the list of the screen modes the library
     offers, switched live with Enter. A mode that does not open says why,
     for example "not enough memory for the back buffer".
@@ -60,6 +60,9 @@ and the 68040, with crash fixes, picture fixes and a faster renderer.
     levels under anisotropy: with Trilinear the mip bands come back, and
     the help line says so. A library without anisotropic filtering shows
     `none`.
+  - **Frame rate**, live: `Off` or `On`, the frames a second in the top
+    right corner (the `drawfps` setting, saved). A `drawfps 2` from the
+    console, which also prints the rate there, shows as `On + console`.
 - **Options > Sound Options:** Paula or AHI and the rate, restarted live.
   **Mouse Look** and **Mouse Speed** (down to 0.5) on the Options page; the
   Mouse Look box shows a `+mlook` too.
@@ -193,7 +196,7 @@ New or changed against the Aminet release:
 | `-bpp 32` | a 32-bit screen (16 is the default; RadeonGL falls back to 16 where a size has no 32-bit mode) |
 | `gl_videosync 0` / `1` | vertical sync off / on (saved as `vid_vsync`, on by default; RadeonGL 0.8) |
 | `vid_sync 0` / `1` / `2` / `3` / `4` | Display sync: off / vsync (the default) / ScrollVPort / ChangeScreenBuffer / ChangeScreenBuffer without the DispMessage wait, unsafe (saved as `vid_vsync` and `vid_flipmode`; live with RadeonGL 0.12; `-buf 2`/`-buf 3` still wins) |
-| `drawfps 1` / `2` | the frame rate in the top right corner, counted over each second (saved); 2 also prints it to the console |
+| `drawfps 1` / `2` | the frame rate in the top right corner, counted over each second (saved; Video Options > Frame rate switches 0 and 1); 2 also prints it to the console |
 | `gl_texturemode <mode>` | the texture filter, any of GL's six (Video Options offers three; saved in config.cfg); without a mode it names the running one |
 | `gl_anisotropy 1` / `2` / `4` / `8` / `16` | anisotropic filtering: sharper floors and walls seen at a slant (Video Options > Anisotropy; 1 is off, the default; live; saved in config.cfg; needs a minigl.library with GL_EXT_texture_filter_anisotropic, RadeonGL 0.17 or later; the R200 blends no mip levels under anisotropy, so with Trilinear the mip bands come back. Speed: with RadeonGL 0.20 under 1 % even at 1920 x 1080, 16x no more than 8x; with 0.19 about 3 % (the library's route, not the card)) |
 | `menu_video` | opens the Video Modes page (for a key binding) |
@@ -301,6 +304,9 @@ Quake icons from Mason's art in `package/art/`.
 
 ## History
 
+- **1.7.1** (25.11.2026): Frame rate under Video Options: the frame
+  counter in the top right corner switched on and off from the menu
+  (live, saved as `drawfps`).
 - **1.7** (25.11.2026): Anisotropy under Video Options (Off to 16x, live,
   saved as `gl_anisotropy`); `-rgba8` for textures with 8 bits a
   component (with RadeonGL 0.20's 32 MB texture heap); the frame rate
