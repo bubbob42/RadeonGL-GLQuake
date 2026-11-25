@@ -1456,6 +1456,18 @@ void VID_Init(unsigned char *palette)
 
 	//mglChooseStencilBuffer(1); // future 2019 - Cowcat
 
+	/* 2026-11-25: -rgba8 doubles the textures' memory (demo1 then needs more
+	 * than RadeonGL's 16 MB screen heap): ask for 32 MB, which RadeonGL 0.20
+	 * and later grant where the board has room (stepping down otherwise),
+	 * unless the player set RadeonGLHeapMax already */
+	if (COM_CheckParm ("-rgba8"))
+	{
+		char	hm[8];
+
+		if (GetVar ("RadeonGLHeapMax", hm, sizeof (hm), 0) <= 0)
+			SetVar ("RadeonGLHeapMax", "32", -1, GVF_LOCAL_ONLY);
+	}
+
 	Con_Printf("Creating context...\n");
 
 	if (mglCreateContext(0,0, scr_width, scr_height))	// the screen's pixels, not the 2D's units (vid_conscale)

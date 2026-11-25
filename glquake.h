@@ -236,11 +236,14 @@ extern	int   gl_solid_format;
 extern	int   gl_alpha_format;
 
 #else
-	#define gl_solid_format GL_RGB
 	#ifndef AMIGAOS
+	#define gl_solid_format GL_RGB
 	#define gl_alpha_format GL_RGBA
 	#else
-	#define gl_alpha_format GL_RGB5_A1 //better for 16bit
+	/* GL_RGB and GL_RGB5_A1 (16 bit, better for 16-bit screens); GL_RGB8
+	   and GL_RGBA8 with -rgba8 (gl_draw.c Draw_Init) */
+	extern int gl_solid_format;
+	extern int gl_alpha_format;
 	#endif
 #endif
 
