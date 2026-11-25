@@ -2215,11 +2215,17 @@ void M_Video_Draw (void)
 
 			M_Print (48, y + 16, "Sharper floors and walls");
 			M_Print (48, y + 24, "seen at a slant");
-			M_Print (48, y + 32, "Enter or arrows: the next");
+
+			/* MEASURED 2026-11-25 (RadeonGL GLFilt 0.4, a slanted floor):
+			 * the R200 blends no mip levels under anisotropy */
+			if (Draw_Anisotropy () > 1 && f == 2)
+				M_Print (48, y + 32, "R200: Trilinear gets mip bands");
+
+			M_Print (48, y + 40, "Enter or arrows: the next");
 			break;
 	}
 
-	M_Print (48, y + 48, "Esc goes back");
+	M_Print (48, y + 56, "Esc goes back");
 }
 
 void M_Video_Key (int k)
