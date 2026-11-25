@@ -78,6 +78,12 @@ int	gl_solid_format = 3;
 int	gl_alpha_format = 4;
 #endif
 
+#ifdef AMIGAOS
+/* the textures' internal formats: 16 bit unless -rgba8 (Draw_Init) */
+int	gl_solid_format = GL_RGB;
+int	gl_alpha_format = GL_RGB5_A1;
+#endif
+
 /* 2026-09-05: restored to the stock GLQuake default now that MiniGLV3D
  * actually stores mip levels. GL_Upload32 has always BUILT the full chain
  * (see its miplevel loop) but the driver discarded every level above 0, so
@@ -556,6 +562,19 @@ void Draw_Init (void)
 	if (!Q_strncasecmp ((char *)gl_renderer, "3dfx",4) || strstr((char *)gl_renderer, "Glide"))
 		Cvar_Set ("gl_max_size", "256");
 	*/
+
+	#ifdef AMIGAOS
+	// -rgba8 (2026-11-25): 8 bits a component for every texture, asked for
+	// as GL_RGB8 / GL_RGBA8 (RadeonGL stores them as ARGB8888): twice the
+	// texture memory and twice the upload bytes over the bus. Off by
+	// default; before the first texture (the console characters below)
+	if (COM_CheckParm ("-rgba8"))
+	{
+		gl_solid_format = GL_RGB8;
+		gl_alpha_format = GL_RGBA8;
+		Con_Printf ("Textures: 8 bits a component (-rgba8)\n");
+	}
+	#endif
 
 	// texture_max_size
 

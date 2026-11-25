@@ -180,6 +180,7 @@ New or changed against the Aminet release:
 | `menu_video` | opens the Video Modes page (for a key binding) |
 | `-playbench N` | plays E1M1 from `id1/playbench.txt` (frame, command lines) with a fixed frame time, times N frames, prints the speed and a checksum of the game, and quits (with `+host_framerate 0.03 +map e1m1`) |
 | `-lm_4444` | the old 16-bit lightmaps (8-bit is the default now; `-litfiles` still uses 16 bit) |
+| `-rgba8` | textures with 8 bits a component (16 is the default): smoother gradients, twice the texture memory and upload time; not with an 8-bit paletted texture path |
 | `gl_keeptjunctions 0` | the old behaviour: fewer vertices, cracks at seams |
 | `-timedemoquit` | quit after `timedemo` (for benchmarks) |
 | `-noworldva` | no static world array: the classic batches |
